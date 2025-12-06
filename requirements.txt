@@ -1,0 +1,22 @@
+# Core analysis/plotting
+numpy
+pandas
+matplotlib
+scipy
+statsmodels
+seaborn
+
+# Data acquisition / HTTP
+requests
+tqdm
+
+# Gender inference helpers
+gender-guesser
+gender-detector
+
+# PDF extraction
+pdfminer.six
+PyMuPDF
+
+# LLM client
+openai
