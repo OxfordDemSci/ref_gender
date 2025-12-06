@@ -12,7 +12,6 @@ import pandas as pd
 import requests
 from openai import OpenAI
 
-# tqdm with graceful fallback
 try:
     from tqdm.auto import tqdm
 except ImportError:  # pragma: no cover
