@@ -34,6 +34,8 @@ def build_descriptive_summary(df_ics: pd.DataFrame, df_uoa_m: pd.DataFrame, df_u
     lines.append("DESCRIPTIVE SUMMARY OF FEMALE REPRESENTATION IN ICS & OUTPUTS")
     lines.append("=" * 60 + "\n")
 
+    panel_order = ["A", "B", "C", "D"]
+
     n_fem_out = df_output["number_female"].sum()
     n_male_out = df_output["number_male"].sum()
     n_fem_ics = df_ics["number_female"].sum()
@@ -50,6 +52,40 @@ def build_descriptive_summary(df_ics: pd.DataFrame, df_uoa_m: pd.DataFrame, df_u
     n_all_fem_ics = len(ics_all_female)
     pct_all_fem_ics = _safe_pct(n_all_fem_ics, len(df_ics))
     lines.append(f"All-female ICS submissions (excluding unknowns): {n_all_fem_ics:,} ({pct_all_fem_ics:.2f}% of all ICS cases)\n")
+
+    # Panel-level aggregates
+    panel_counts = (
+        df_uoa_m.groupby("Panel")[["number_female_y", "number_male_y", "number_female_x", "number_male_x"]]
+        .sum(min_count=1)
+        .rename(
+            columns={
+                "number_female_y": "female_ics",
+                "number_male_y": "male_ics",
+                "number_female_x": "female_output",
+                "number_male_x": "male_output",
+            }
+        )
+        .reindex(panel_order)
+        .fillna(0)
+    )
+    lines.append("Female share by REF main panel (aggregated across UoAs):")
+    for panel in panel_order:
+        row = panel_counts.loc[panel]
+        pct_panel_out = _safe_pct(row["female_output"], row["female_output"] + row["male_output"])
+        pct_panel_ics = _safe_pct(row["female_ics"], row["female_ics"] + row["male_ics"])
+        lines.append(
+            f"  Panel {panel}: Outputs {int(row['female_output']):,}/{int(row['female_output'] + row['male_output']):,} "
+            f"= {pct_panel_out:.2f}% | ICS {int(row['female_ics']):,}/{int(row['female_ics'] + row['male_ics']):,} = {pct_panel_ics:.2f}%"
+        )
+
+    all_female_panel = ics_all_female["Panel"].value_counts().reindex(panel_order, fill_value=0)
+    total_panel_cases = df_ics["Panel"].value_counts().reindex(panel_order, fill_value=0)
+    lines.append("\nAll-female ICS submissions by panel:")
+    for panel in panel_order:
+        num = all_female_panel.loc[panel]
+        denom = total_panel_cases.loc[panel]
+        pct = _safe_pct(num, denom)
+        lines.append(f"  Panel {panel}: {num:,} ({pct:.2f}% of {denom:,} ICS cases)")
 
     # By University
     top_uni = df_uni_m[["Institution name", "pct_female_ics", "pct_female_output"]].dropna().sort_values("pct_female_ics", ascending=False)
@@ -101,6 +137,44 @@ def build_descriptive_summary(df_ics: pd.DataFrame, df_uoa_m: pd.DataFrame, df_u
         .head(5)
         .to_string(index=False)
     )
+
+    # Panel-specific UoA breakdowns
+    lines.append("\nPanel-specific UoA breakdowns:")
+    for panel in panel_order:
+        panel_uoa = df_uoa_m[df_uoa_m["Panel"] == panel].copy()
+        lines.append(f"\nPanel {panel}:")
+        if panel_uoa.empty:
+            lines.append("  No UoA data available for this panel.")
+            continue
+
+        panel_uoa["diff_ics_output"] = panel_uoa["pct_female_ics"] - panel_uoa["pct_female_output"]
+        panel_top = panel_uoa[["Unit of assessment name", "pct_female_ics", "pct_female_output"]].dropna().sort_values("pct_female_ics", ascending=False)
+        panel_bottom = panel_top.sort_values("pct_female_ics", ascending=True)
+
+        lines.append("  UoAs with highest female Impact (ICS) proportions:")
+        lines.append(panel_top.head(5).to_string(index=False))
+        lines.append("  UoAs with lowest female Impact (ICS) proportions:")
+        lines.append(panel_bottom.head(5).to_string(index=False))
+
+        lines.append("  UoAs with largest positive difference (ICS − Output):")
+        lines.append(
+            panel_uoa[["Unit of assessment name", "pct_female_ics", "pct_female_output", "diff_ics_output"]]
+            .sort_values("diff_ics_output", ascending=False)
+            .head(5)
+            .to_string(index=False)
+        )
+        lines.append("  UoAs with largest negative difference (ICS − Output):")
+        lines.append(
+            panel_uoa[["Unit of assessment name", "pct_female_ics", "pct_female_output", "diff_ics_output"]]
+            .sort_values("diff_ics_output", ascending=True)
+            .head(5)
+            .to_string(index=False)
+        )
+
+        lines.append("  Summary statistics (Impact) for pct female across UoAs:")
+        lines.append(panel_uoa["pct_female_ics"].describe().round(3).to_string())
+        lines.append("  Summary statistics (Outputs) for pct female across UoAs:")
+        lines.append(panel_uoa["pct_female_output"].describe().round(3).to_string())
 
     # Discipline groups (STEM vs SHAPE)
     disc = (
