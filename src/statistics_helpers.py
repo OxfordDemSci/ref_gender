@@ -1,12 +1,12 @@
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, Iterable, List
 
 import numpy as np
 import pandas as pd
 from scipy import stats
 
-from figure_one_helpers import DEFAULT_DATA_ROOT
-from figure_one_data import prepare_figure_one_data
+from figure_one_helpers import DEFAULT_DATA_ROOT, uoa_to_panel
+from figure_one_data import prepare_figure_one_data, UOA_MAP
 
 ALPHA = 0.05
 
@@ -27,6 +27,359 @@ def _safe_pct(num: float, denom: float) -> float:
     return 100 * num / denom if denom else np.nan
 
 
+def _total_income(df: pd.DataFrame) -> pd.Series:
+    """Return total income (cash + in-kind) for each row."""
+    cash = df["tot_income"] if "tot_income" in df.columns else 0
+    kind = df["tot_inc_kind"] if "tot_inc_kind" in df.columns else 0
+    return pd.Series(cash).fillna(0) + pd.Series(kind).fillna(0)
+
+
+def _ensure_panel(df: pd.DataFrame) -> pd.DataFrame:
+    """Return a copy with a Panel column present."""
+    if "Panel" in df.columns:
+        return df
+    df = df.copy()
+    if "Main panel" in df.columns:
+        df["Panel"] = df["Main panel"]
+    elif "Unit of assessment number" in df.columns:
+        df["Panel"] = df["Unit of assessment number"].apply(uoa_to_panel)
+    else:
+        df["Panel"] = np.nan
+    return df
+
+
+def _table_to_latex(df: pd.DataFrame, path: Path, column_format: Optional[str] = None, index: bool = False):
+    """Save a table to LaTeX, creating parent directories as needed."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_latex(
+        path,
+        index=index,
+        column_format=column_format,
+        float_format=lambda x: f"{x:.2f}",
+        multicolumn_format="c",
+    )
+
+
+def _round_sig(x: pd.Series, sig: int = 4) -> pd.Series:
+    """Round a Series to the given significant figures."""
+    return x.apply(lambda v: float(f"{v:.{sig}g}") if pd.notna(v) else v)
+
+
+def _panel_table(df_ics: pd.DataFrame, df_output: pd.DataFrame) -> pd.DataFrame:
+    df_ics = _ensure_panel(df_ics)
+    df_output = _ensure_panel(df_output)
+    panel_order = ["A", "B", "C", "D"]
+    total_female_ics = df_ics["number_female"].sum()
+    total_female_out = df_output["number_female"].sum()
+
+    rows = []
+    for panel in panel_order:
+        ics_p = df_ics[df_ics["Panel"] == panel]
+        out_p = df_output[df_output["Panel"] == panel]
+
+        n_ics = len(ics_p)
+        fem_ics = ics_p["number_female"].sum()
+        male_ics = ics_p["number_male"].sum()
+        pct_fem_ics = _safe_pct(fem_ics, fem_ics + male_ics)
+        pct_all_fem_ics = _safe_pct(fem_ics, total_female_ics)
+
+        n_out = len(out_p)
+        fem_out = out_p["number_female"].sum()
+        male_out = out_p["number_male"].sum()
+        pct_fem_out = _safe_pct(fem_out, fem_out + male_out)
+        pct_all_fem_out = _safe_pct(fem_out, total_female_out)
+
+        fte = ics_p["fte"].sum(min_count=1)
+        doc_deg = ics_p["num_doc_degrees_total"].sum(min_count=1)
+        total_inc = _total_income(ics_p).sum()
+
+        rows.append(
+            {
+                "Panel": panel,
+                "FTE": fte,
+                "PhDs": doc_deg,
+                "Total inc": total_inc,
+                "Number of ICS": n_ics,
+                "% Female Authors (ICS)": pct_fem_ics,
+                "% of All Female Authors (ICS)": pct_all_fem_ics,
+                "Number of Outputs": n_out,
+                "% Female Authors (Outputs)": pct_fem_out,
+                "% of All Female Authors (Outputs)": pct_all_fem_out,
+            }
+        )
+
+    return pd.DataFrame(rows)
+
+
+def _uoa_table(df_ics: pd.DataFrame, df_output: pd.DataFrame) -> pd.DataFrame:
+    df_ics = _ensure_panel(df_ics)
+    df_output = _ensure_panel(df_output)
+    total_female_ics = df_ics["number_female"].sum()
+    total_female_out = df_output["number_female"].sum()
+
+    uoa_numbers = sorted(set(df_ics["Unit of assessment number"]).union(set(df_output["Unit of assessment number"])))
+    rows = []
+    for uoa in uoa_numbers:
+        ics_u = df_ics[df_ics["Unit of assessment number"] == uoa]
+        out_u = df_output[df_output["Unit of assessment number"] == uoa]
+        panel = uoa_to_panel(uoa)
+
+        n_ics = len(ics_u)
+        fem_ics = ics_u["number_female"].sum()
+        male_ics = ics_u["number_male"].sum()
+        pct_fem_ics = _safe_pct(fem_ics, fem_ics + male_ics)
+        pct_all_fem_ics = _safe_pct(fem_ics, total_female_ics)
+
+        n_out = len(out_u)
+        fem_out = out_u["number_female"].sum()
+        male_out = out_u["number_male"].sum()
+        pct_fem_out = _safe_pct(fem_out, fem_out + male_out)
+        pct_all_fem_out = _safe_pct(fem_out, total_female_out)
+
+        fte = ics_u["fte"].sum(min_count=1)
+        doc_deg = ics_u["num_doc_degrees_total"].sum(min_count=1)
+        total_inc = _total_income(ics_u).sum()
+
+        rows.append(
+            {
+                "Unit of Assessment": f"{uoa} - {UOA_MAP.get(uoa, 'Unknown')}",
+                "Panel": panel,
+                "FTE": fte,
+                "PhDs": doc_deg,
+                "Total inc": total_inc,
+                "Number of ICS": n_ics,
+                "% Female Authors (ICS)": pct_fem_ics,
+                "% of All Female Authors (ICS)": pct_all_fem_ics,
+                "Number of Outputs": n_out,
+                "% Female Authors (Outputs)": pct_fem_out,
+                "% of All Female Authors (Outputs)": pct_all_fem_out,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _llm_table(df_ics: pd.DataFrame) -> pd.DataFrame:
+    llm_cols = [c for c in df_ics.columns if c.startswith("llm_")]
+    total_female_ics = df_ics["number_female"].sum()
+    rows = []
+    for col in llm_cols:
+        label = col.replace("llm_", "").replace("_", " ").title()
+        subset = df_ics[df_ics[col] > 0]
+        n_cases = len(subset)
+        fem = subset["number_female"].sum()
+        male = subset["number_male"].sum()
+        pct_fem = _safe_pct(fem, fem + male)
+        pct_all_fem = _safe_pct(fem, total_female_ics)
+        rows.append(
+            {
+                "Topic": label,
+                "Number of ICS": n_cases,
+                "% Female Authors": pct_fem,
+                "% of All Female Authors": pct_all_fem,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _llm_panel_table(df_ics: pd.DataFrame) -> pd.DataFrame:
+    df_ics = _ensure_panel(df_ics)
+    llm_cols = [c for c in df_ics.columns if c.startswith("llm_")]
+    panel_order = ["A", "B", "C", "D"]
+    rows = []
+    for panel in panel_order:
+        panel_df = df_ics[df_ics["Panel"] == panel]
+        total_female_panel = panel_df["number_female"].sum()
+        for col in llm_cols:
+            label = col.replace("llm_", "").replace("_", " ").title()
+            subset = panel_df[panel_df[col] > 0]
+            n_cases = len(subset)
+            fem = subset["number_female"].sum()
+            male = subset["number_male"].sum()
+            pct_fem = _safe_pct(fem, fem + male)
+            pct_all_fem = _safe_pct(fem, total_female_panel)
+            rows.append(
+                {
+                    "Panel": panel,
+                    "Topic": label,
+                    "Number of ICS": n_cases,
+                    "% Female Authors": pct_fem,
+                    "% of All Female Authors (panel)": pct_all_fem,
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+def build_and_save_summary_tables(
+    df_ics: pd.DataFrame,
+    df_output: pd.DataFrame,
+    out_dir: Path = Path("../outputs/tables"),
+) -> Dict[str, pd.DataFrame]:
+    """
+    Build summary tables (panels, UoA, LLM topics overall, LLM topics by panel)
+    and persist them as LaTeX files. Returns the DataFrames.
+    """
+    out_dir = Path(out_dir)
+
+    panel_df = _panel_table(df_ics, df_output)
+    panel_df = panel_df[
+        [
+            "Panel",
+            "FTE",
+            "PhDs",
+            "Total inc",
+            "Number of ICS",
+            "% Female Authors (ICS)",
+            "% of All Female Authors (ICS)",
+            "Number of Outputs",
+            "% Female Authors (Outputs)",
+            "% of All Female Authors (Outputs)",
+        ]
+    ]
+    panel_df["FTE"] = panel_df["FTE"].round().astype(int)
+    panel_df["PhDs (000)"] = (panel_df["PhDs"] / 1000).round().astype(int)
+    panel_df["Total Income (£bn)"] = _round_sig(panel_df["Total inc"] / 1e9, sig=4)
+    panel_df = panel_df.drop(columns=["PhDs", "Total inc"]).rename(
+        columns={
+            "Number of ICS": "N (ICS)",
+            "% Female Authors (ICS)": "% Female (ICS)",
+            "% of All Female Authors (ICS)": "% All Female (ICS)",
+            "Number of Outputs": "N (Papers)",
+            "% Female Authors (Outputs)": "% Female (Papers)",
+            "% of All Female Authors (Outputs)": "% All Female (Papers)",
+        }
+    )
+    panel_df["% Female (ICS)"] = _round_sig(panel_df["% Female (ICS)"])
+    panel_df["% All Female (ICS)"] = _round_sig(panel_df["% All Female (ICS)"])
+    panel_df["% Female (Papers)"] = _round_sig(panel_df["% Female (Papers)"])
+    panel_df["% All Female (Papers)"] = _round_sig(panel_df["% All Female (Papers)"])
+    panel_df = panel_df[
+        [
+            "Panel",
+            "FTE",
+            "PhDs (000)",
+            "Total Income (£bn)",
+            "N (ICS)",
+            "% Female (ICS)",
+            "% All Female (ICS)",
+            "N (Papers)",
+            "% Female (Papers)",
+            "% All Female (Papers)",
+        ]
+    ]
+    _table_to_latex(panel_df, out_dir / "panel_summary.tex", column_format="lrrrrrrrrr")
+
+    uoa_df = _uoa_table(df_ics, df_output)
+    uoa_numbers = pd.to_numeric(uoa_df["Unit of Assessment"].str.split(" - ").str[0], errors="coerce").astype(int)
+    uoa_df.insert(0, "UoA", uoa_numbers)
+    uoa_df["Unit of Assessment"] = uoa_df["Unit of Assessment"].str.split(" - ").str[1]
+    uoa_df = uoa_df[
+        [
+            "UoA",
+            "Unit of Assessment",
+            "Panel",
+            "FTE",
+            "PhDs",
+            "Total inc",
+            "Number of ICS",
+            "% Female Authors (ICS)",
+            "% of All Female Authors (ICS)",
+            "Number of Outputs",
+            "% Female Authors (Outputs)",
+            "% of All Female Authors (Outputs)",
+        ]
+    ]
+    uoa_df["FTE"] = uoa_df["FTE"].round().astype(int)
+    uoa_df["PhDs (000)"] = (uoa_df["PhDs"] / 1000).round().astype(int)
+    uoa_df["Total Income (£bn)"] = _round_sig(uoa_df["Total inc"] / 1e9, sig=4)
+    uoa_df = uoa_df.drop(columns=["PhDs", "Total inc"]).rename(
+        columns={
+            "Number of ICS": "N (ICS)",
+            "% Female Authors (ICS)": "% Female (ICS)",
+            "% of All Female Authors (ICS)": "% All Female (ICS)",
+            "Number of Outputs": "N (Papers)",
+            "% Female Authors (Outputs)": "% Female (Papers)",
+            "% of All Female Authors (Outputs)": "% All Female (Papers)",
+        }
+    )
+    uoa_df["% Female (ICS)"] = _round_sig(uoa_df["% Female (ICS)"])
+    uoa_df["% All Female (ICS)"] = _round_sig(uoa_df["% All Female (ICS)"])
+    uoa_df["% Female (Papers)"] = _round_sig(uoa_df["% Female (Papers)"])
+    uoa_df["% All Female (Papers)"] = _round_sig(uoa_df["% All Female (Papers)"])
+    uoa_df = uoa_df[
+        [
+            "UoA",
+            "Unit of Assessment",
+            "Panel",
+            "FTE",
+            "PhDs (000)",
+            "Total Income (£bn)",
+            "N (ICS)",
+            "% Female (ICS)",
+            "% All Female (ICS)",
+            "N (Papers)",
+            "% Female (Papers)",
+            "% All Female (Papers)",
+        ]
+    ]
+    _table_to_latex(uoa_df, out_dir / "uoa_summary.tex", column_format="rllrrrrrrrrr")
+
+    llm_df = _llm_table(df_ics)
+    _table_to_latex(llm_df, out_dir / "llm_summary.tex", column_format="lrrr")
+
+    llm_panel_df = _llm_panel_table(df_ics)
+    _table_to_latex(llm_panel_df, out_dir / "llm_panel_summary.tex", column_format="llrrr")
+
+    return {
+        "panel": panel_df,
+        "uoa": uoa_df,
+        "llm": llm_df,
+        "llm_panel": llm_panel_df,
+    }
+
+
+def llm_female_share_tables(df_ics: pd.DataFrame, panel_order: Iterable[str] = ("A", "B", "C", "D")) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Build two tables with female percentages for each llm_* topic:
+      - overall across all ICS
+      - split by REF panel.
+    """
+    llm_cols: List[str] = [c for c in df_ics.columns if c.startswith("llm_")]
+    panel_order = list(panel_order)
+
+    def _rows(frame: pd.DataFrame, extra_cols: Dict | None = None):
+        records = []
+        for col in llm_cols:
+            subset = frame[frame[col] > 0]
+            female = subset["number_female"].sum()
+            male = subset["number_male"].sum()
+            total_people = female + male
+            records.append(
+                {
+                    "llm_topic": col.replace("llm_", "").replace("_", " ").title(),
+                    "n_cases": len(subset),
+                    "share_of_ics": len(subset) / len(frame) if len(frame) else np.nan,
+                    "female": female,
+                    "total_people": total_people,
+                    "pct_female": female / total_people if total_people else np.nan,
+                    **(extra_cols or {}),
+                }
+            )
+        return records
+
+    overall = pd.DataFrame(_rows(df_ics))
+    overall = overall.sort_values("llm_topic").reset_index(drop=True)
+
+    panel_records: List[Dict] = []
+    for panel in panel_order:
+        panel_df = df_ics[df_ics["Panel"] == panel]
+        panel_records.extend(_rows(panel_df, {"panel": panel}))
+    by_panel = pd.DataFrame(panel_records)
+    by_panel = by_panel.sort_values(["panel", "llm_topic"]).reset_index(drop=True)
+
+    return overall, by_panel
+
+
 def build_descriptive_summary(df_ics: pd.DataFrame, df_uoa_m: pd.DataFrame, df_uni_m: pd.DataFrame, df_output: pd.DataFrame) -> str:
     """Generate a multiline descriptive summary."""
     lines = []
@@ -35,6 +388,7 @@ def build_descriptive_summary(df_ics: pd.DataFrame, df_uoa_m: pd.DataFrame, df_u
     lines.append("=" * 60 + "\n")
 
     panel_order = ["A", "B", "C", "D"]
+    llm_overall, llm_by_panel = llm_female_share_tables(df_ics, panel_order)
 
     n_fem_out = df_output["number_female"].sum()
     n_male_out = df_output["number_male"].sum()
@@ -52,6 +406,47 @@ def build_descriptive_summary(df_ics: pd.DataFrame, df_uoa_m: pd.DataFrame, df_u
     n_all_fem_ics = len(ics_all_female)
     pct_all_fem_ics = _safe_pct(n_all_fem_ics, len(df_ics))
     lines.append(f"All-female ICS submissions (excluding unknowns): {n_all_fem_ics:,} ({pct_all_fem_ics:.2f}% of all ICS cases)\n")
+
+    # LLM-tagged topics (ICS only)
+    lines.append("LLM-tagged ICS cases (aggregate across all panels):")
+    if not llm_overall.empty:
+        lines.append(
+            llm_overall.assign(
+                share_of_ics=lambda d: d["share_of_ics"] * 100,
+                pct_female=lambda d: d["pct_female"] * 100,
+            )
+            .rename(columns={"share_of_ics": "% of ICS", "pct_female": "% female"})
+            .to_string(
+                index=False,
+                formatters={
+                    "% of ICS": "{:.2f}".format,
+                    "% female": "{:.2f}".format,
+                },
+            )
+        )
+    else:
+        lines.append("  No llm_* topic flags found.")
+
+    lines.append("\nLLM-tagged ICS cases by panel:")
+    if llm_by_panel.empty:
+        lines.append("  No llm_* topic flags found.")
+    else:
+        panel_fmt = (
+            llm_by_panel.assign(
+                share_of_ics=lambda d: d["share_of_ics"] * 100,
+                pct_female=lambda d: d["pct_female"] * 100,
+            )
+            .rename(columns={"share_of_ics": "% of panel ICS", "pct_female": "% female"})
+            .to_string(
+                index=False,
+                formatters={
+                    "% of panel ICS": "{:.2f}".format,
+                    "% female": "{:.2f}".format,
+                },
+            )
+        )
+        lines.append(panel_fmt)
+    lines.append("")  # spacer
 
     # Panel-level aggregates
     panel_counts = (
