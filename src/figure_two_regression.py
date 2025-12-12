@@ -81,6 +81,7 @@ def plot_regression_coefficients(
     label_fn: Callable[[str], str] = pretty_label,
 ) -> Tuple[plt.Figure, Tuple[plt.Axes, plt.Axes]]:
     """Render side-by-side OLS/GLM coefficient plots."""
+    plt.rcParams["axes.unicode_minus"] = False
     variables = var_order
     n_vars = len(variables)
     fig, axes = plt.subplots(1, 2, figsize=(13, 7))
@@ -138,15 +139,16 @@ def plot_regression_coefficients(
     )
     ax_right.set_yticks(range(n_vars))
     ax_right.set_ylim(ax_left.get_ylim())
-    ax_right.set_yticklabels([])
+    ax_right.set_yticklabels(display_labels)
+    ax_right.tick_params(axis="y", labelsize=13, labelleft=False, labelright=True)
 
     ax_left.set_title("a.", loc="left", fontweight="bold", fontsize=17)
     ax_right.set_title("b.", loc="left", fontweight="bold", fontsize=17)
-    ax_left.grid(linestyle="--", color="grey", alpha=0.15)
-    ax_right.grid(linestyle="--", color="grey", alpha=0.15)
+#    ax_left.grid(linestyle="--", color="grey", alpha=0.15)
+#    ax_right.grid(linestyle="--", color="grey", alpha=0.15)
 
     fig.tight_layout()
-    sns.despine(fig=fig)
+#    sns.despine(fig=fig)
     return fig, (ax_left, ax_right)
 
 

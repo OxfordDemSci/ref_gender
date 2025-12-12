@@ -18,6 +18,7 @@ COLOR_OUTPUT_BLUE = '#0072B2'
 THIS_DIR = Path(__file__).resolve().parent
 DEFAULT_DATA_ROOT = (THIS_DIR / '..' / 'data').resolve()
 DEFAULT_UNICLASS_PATH = DEFAULT_DATA_ROOT / 'manual' / 'university_category' / 'ref_unique_institutions.csv'
+DEFAULT_UOA_CODES_PATH = DEFAULT_DATA_ROOT / 'manual' / 'ref_acronyms' / 'ref2021_uoa_codes.xlsx'
 
 
 def uoa_to_panel(u):
@@ -56,3 +57,16 @@ def size_from_value(v, vmin, vmax, s_min=10, s_max=500):
     if vmax == vmin:
         return 0.5 * (s_min + s_max)
     return s_min + (v - vmin) / (vmax - vmin) * (s_max - s_min)
+
+
+def apply_mpl_defaults():
+    """
+    Apply shared Matplotlib defaults (font + title weight).
+
+    Centralising this avoids ordering issues when different modules tweak
+    rcParams at import time vs inside plotting functions.
+    """
+    import matplotlib as mpl
+
+    mpl.rcParams["font.family"] = "Helvetica"
+    mpl.rcParams["axes.titleweight"] = "bold"

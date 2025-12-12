@@ -1,17 +1,19 @@
 from pathlib import Path
-from typing import Iterable, Tuple
+from typing import Dict, Iterable, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from matplotlib.lines import Line2D
-from matplotlib.patches import Patch, Rectangle
+from matplotlib.patches import Patch
 
 from figure_one_helpers import (
     COLOR_IMPACT_ORANGE,
     COLOR_OUTPUT_BLUE,
+    DEFAULT_UOA_CODES_PATH,
     PANEL_COLORS,
+    apply_mpl_defaults,
     make_percent_formatter,
-    size_from_value,
     uoa_to_panel,
 )
 
@@ -24,18 +26,18 @@ def _ensure_panel_columns(df_uoa_m, df_ics):
         df_ics["Panel"] = df_ics["Unit of assessment number"].apply(uoa_to_panel)
 
 
-def _build_layout(figsize=(13, 8.25)):
+def _build_layout(figsize=(14, 8.25)):
     fig = plt.figure(figsize=figsize, constrained_layout=True)
     gs = fig.add_gridspec(
         nrows=2,
         ncols=3,
-        width_ratios=[0.8, 1.6, 1.6],
-        height_ratios=[3, 1],
+        width_ratios=[0.9, 1.5, 0.9],
+        height_ratios=[2.25, 1],
     )
-    ax1 = fig.add_subplot(gs[:, 0])
+    ax1 = fig.add_subplot(gs[0, 0])
     ax2 = fig.add_subplot(gs[0, 1])
-    ax3 = fig.add_subplot(gs[0, 2])
-    ax4 = fig.add_subplot(gs[1, 1:3])
+    ax3 = fig.add_subplot(gs[:, 2])
+    ax4 = fig.add_subplot(gs[1, 0:2])
     return fig, (ax1, ax2, ax3, ax4)
 
 
@@ -119,127 +121,130 @@ def _plot_uoa_scatter(ax, df_uoa_m, show_unit_names: bool):
     ax.annotate(
         _label_min,
         xy=(_x_min, _y_min),
-        xytext=(0.55, 0.175),
+        xytext=(0.50, 0.185),
         textcoords="axes fraction",
         fontsize=11,
         ha="center",
         va="center",
-        arrowprops=dict(arrowstyle="->", lw=1.1, color="k", connectionstyle="arc3,rad=-0.5"),
+        arrowprops=dict(arrowstyle="->", lw=1.1, color="k", connectionstyle="arc3,rad=-0.25"),
         bbox=dict(facecolor="white", edgecolor="none", alpha=1),
     )
 
 
-def _plot_panel_bubbles(ax, df_ics):
-    llm_cols = [c for c in df_ics.columns if c.startswith("llm_")][:11]
-    panel_order_ind = [p for p in ["A", "B", "C", "D"] if p in df_ics["Panel"].dropna().unique()]
+def _load_uoa_label_lookup(path: Path = DEFAULT_UOA_CODES_PATH) -> Dict[int, str]:
+    """
+    Optional hook: read a user-supplied UoA label map from the manual CSV.
+    Looks for two columns that include either 'uoa' or 'unit of assessment' plus
+    'number' (for the key) and a label column (prefers Abbrev_4). Falls back
+    to any column that looks like an ID and any column that looks like a label.
+    Returns an empty dict if the file or expected columns are missing.
+    """
+    if not Path(path).exists():
+        return {}
 
-    n_panels = len(panel_order_ind)
-    n_ind = len(llm_cols)
-    values = np.full((n_panels, n_ind), np.nan)
-    missing_mask = np.zeros((n_panels, n_ind), dtype=bool)
+    # Support both Excel and CSV inputs
+    if path.suffix.lower() in {".xls", ".xlsx"}:
+        df_lookup = pd.read_excel(path)
+    else:
+        df_lookup = pd.read_csv(path)
 
-    for i, panel in enumerate(panel_order_ind):
-        panel_df = df_ics[df_ics["Panel"] == panel]
-        for j, col in enumerate(llm_cols):
-            mask = panel_df[col].fillna(0).astype(bool)
-            sub = panel_df[mask]
-            fem = sub["number_female"].sum()
-            male = sub["number_male"].sum()
-            denom = fem + male
-            if denom > 0:
-                values[i, j] = fem / denom
-            else:
-                missing_mask[i, j] = True
+    norm_cols = {c: c.strip().lower() for c in df_lookup.columns}
 
-    val_flat = values[~np.isnan(values)]
-    vmin, vmax = (float(val_flat.min()), float(val_flat.max())) if val_flat.size > 0 else (0.0, 1.0)
+    def _find_col(preferred_terms, must_contain=None):
+        must_contain = must_contain or []
+        for c, lower in norm_cols.items():
+            if all(term in lower for term in must_contain) and any(term in lower for term in preferred_terms):
+                return c
+        return None
 
-    s_min, s_max = 10, 500
+    # Column holding the numeric UoA identifier
+    num_col = _find_col(preferred_terms=["number", "id", "no"], must_contain=["uoa"])
+    if not num_col:
+        num_col = _find_col(preferred_terms=["number", "id", "no"], must_contain=["unit of assessment"])
+    if not num_col:
+        num_col = _find_col(preferred_terms=["number", "id", "no"])
 
-    ax.clear()
-    x_coords = np.arange(n_panels)
-    y_coords = np.arange(n_ind)
+    # Prefer the 4-letter abbreviation field when present
+    label_col = _find_col(preferred_terms=["abbrev_4", "abbrev4", "abbrev"])
+    if not label_col:
+        label_col = _find_col(preferred_terms=["label", "name", "title", "desc"], must_contain=["uoa"])
+    if not label_col:
+        label_col = _find_col(preferred_terms=["label", "name", "title", "desc"], must_contain=["unit of assessment"])
+    if not label_col:
+        label_col = _find_col(preferred_terms=["label", "name", "title", "desc"])
 
-    for i, panel in enumerate(panel_order_ind):
-        c = PANEL_COLORS.get(panel, "grey")
-        for j, col in enumerate(llm_cols):
-            x = i
-            y = j
-            if missing_mask[i, j]:
-                ax.scatter(
-                    x,
-                    y,
-                    s=s_min * 0.4,
-                    facecolors="none",
-                    edgecolors="0.6",
-                    linewidths=0.8,
-                    zorder=1.5,
-                )
-                continue
-            v = values[i, j]
-            if np.isnan(v):
-                continue
-            s = size_from_value(v, vmin, vmax, s_min, s_max)
-            ax.scatter(
-                x,
-                y,
-                s=s,
-                color=c,
-                edgecolor="k",
-                zorder=2,
-            )
+    if not num_col or not label_col:
+        return {}
 
-    ax.set_xlim(-0.5, n_panels - 0.5)
-    ax.set_ylim(-0.5, n_ind - 0.5)
-    ax.set_xticks(x_coords)
-    ax.set_xticklabels([f"Panel {p}" for p in panel_order_ind])
-    ax.set_yticks(y_coords)
+    mapping = (
+        df_lookup[[num_col, label_col]]
+        .assign(**{num_col: pd.to_numeric(df_lookup[num_col], errors="coerce")})
+        .dropna(subset=[num_col, label_col])
+        .drop_duplicates(subset=[num_col])
+    )
+    mapping[num_col] = mapping[num_col].astype(int)
+    return dict(zip(mapping[num_col], mapping[label_col].astype(str)))
 
-    llm_labels = []
-    for c in llm_cols:
-        lab = c[4:].replace("_", " ").title()
-        llm_labels.append("NHS" if lab == "Nhs" else lab)
-    ax.set_yticklabels(llm_labels)
-    ax.invert_yaxis()
-    ax.set_xlabel("REF Main Panel", fontsize=15)
-    ax.set_title("c.", loc="left", fontweight="bold", fontsize=17)
-    ax.grid(linestyle="--", color="k", alpha=0.15, axis="x", zorder=1)
+
+def _format_uoa_label(uoa_num, label_map: Dict[int, str]) -> str:
+    num_str = str(int(uoa_num)) if not pd.isna(uoa_num) else ""
+    if label_map:
+        label = label_map.get(int(uoa_num)) or label_map.get(num_str)
+        if label:
+            label_str = str(label).strip()
+            if num_str and num_str in label_str:
+                return label_str
+            return f"{label_str} ({num_str})" if num_str else label_str
+    return num_str
+
+
+def _plot_uoa_percent_bars(ax, df_uoa_m, uoa_label_map: Dict[int, str]):
+    """Horizontal bar chart of % female (impact) by UoA, ordered high to low."""
+    df_plot = (
+        df_uoa_m[
+            [
+                "Unit of assessment number",
+                "Unit of assessment name",
+                "Panel",
+                "pct_female_ics",
+            ]
+        ]
+        .dropna(subset=["pct_female_ics"])
+        .copy()
+    )
+
+    df_plot["label"] = df_plot["Unit of assessment number"].apply(
+        lambda num: _format_uoa_label(num, uoa_label_map)
+    )
+    df_plot = df_plot.sort_values("pct_female_ics", ascending=False)
+
+    y_pos = np.arange(len(df_plot))
+    colors = df_plot["Panel"].map(PANEL_COLORS).fillna("grey")
+    values = df_plot["pct_female_ics"].values
+
+    bars = ax.barh(y_pos, values, color=colors, edgecolor="k", zorder=2)
+    ax.bar_label(
+        bars,
+        labels=[f"{val*100:.1f}%" for val in values],
+        padding=-30,
+        label_type="edge",
+        fontsize=10,
+    )
+
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(df_plot["label"])
     ax.yaxis.tick_right()
     ax.yaxis.set_label_position("right")
+    ax.spines["left"].set_visible(False)
+    ax.spines["right"].set_visible(True)
+    ax.invert_yaxis()  # Highest % at top
 
-    handles_size = []
-    if val_flat.size > 0:
-        ref_vals = np.round(np.linspace(vmin, vmax, 3), 2)
-        for rv in ref_vals:
-            s = size_from_value(rv, vmin, vmax, s_min, s_max)
-            handles_size.append(
-                Line2D(
-                    [],
-                    [],
-                    linestyle="None",
-                    marker="o",
-                    markersize=np.sqrt(s),
-                    markerfacecolor="none",
-                    markeredgecolor="k",
-                    label=f"{rv*100:.0f}% Female",
-                )
-            )
-    ax.legend(
-        handles=handles_size,
-        title="Female Impact (ICS)",
-        loc="upper center",
-        borderaxespad=0,
-        fontsize=9,
-        frameon=True,
-        edgecolor="k",
-        facecolor=(1, 1, 1, 1),
-        framealpha=1.0,
-        ncol=3,
-        borderpad=0.7,
-        labelspacing=0.75,
-        handlelength=1,
-        markerscale=0.8,
-    )
+    x_max = values.max() + 0.12 if len(values) else 1.0
+    ax.set_xlim(max(0.35, min(1.1, x_max)), 0)
+    ax.set_xlabel("Female Fraction (Impact)", fontsize=15)
+    ax.set_title("c.", loc="left", fontweight="bold", fontsize=17)
+    ax.set_ylim(-0.5, len(df_plot) - 0.5)
+    ax.grid(linestyle="--", color="k", alpha=0.15, axis="x", zorder=1)
 
 
 def _plot_panel_violins(ax, df_uoa_m):
@@ -289,9 +294,43 @@ def _plot_panel_violins(ax, df_uoa_m):
     if "cmeans" in vp_ics:
         vp_ics["cmeans"].set_edgecolor("k")
         vp_ics["cmeans"].set_linestyle("--")
+        vp_ics["cmeans"].set_zorder(6)
     if "cmeans" in vp_output:
         vp_output["cmeans"].set_edgecolor("k")
         vp_output["cmeans"].set_linestyle("--")
+        vp_output["cmeans"].set_linewidth(2.0)
+        vp_output["cmeans"].set_zorder(6)
+
+    # Manually draw mean markers/lines for broader matplotlib compatibility
+    line_half_height = width_v * 0.4
+    for pos, dist in zip(positions_ics, ics_distributions):
+        if dist.size == 0:
+            continue
+        m = np.nanmean(dist)
+        ax.vlines(
+            m,
+            pos - line_half_height,
+            pos + line_half_height,
+            color="k",
+            linewidth=2,
+            linestyles=(0,(1,1)),
+            zorder=6,
+        )
+#        ax.scatter(m, pos, marker="o", s=35, facecolor="white", edgecolor="k", zorder=7)
+    for pos, dist in zip(positions_output, output_distributions):
+        if dist.size == 0:
+            continue
+        m = np.nanmean(dist)
+        ax.vlines(
+            m,
+            pos - line_half_height,
+            pos + line_half_height,
+            color="k",
+            linewidth=2,
+            linestyles=(0,(1,1)),
+            zorder=6,
+        )
+#        ax.scatter(m, pos, marker="o", s=35, facecolor="white", edgecolor="k", zorder=7)
 
     rng = np.random.default_rng(0)
     for i, p in enumerate(panel_order_uoa):
@@ -325,7 +364,7 @@ def _plot_panel_violins(ax, df_uoa_m):
             )
 
     ax.set_xlim(0.025, 0.7)
-    ax.set_ylim(-0.5, 3.8)
+    ax.set_ylim(-0.5, 3.7)
     ax.set_xticks(np.linspace(0, 1, 6))
     ax.set_yticks(y_base)
     ax.set_yticklabels([f"Panel {p}" for p in panel_order_uoa])
@@ -333,15 +372,18 @@ def _plot_panel_violins(ax, df_uoa_m):
     ax.set_title("a.", loc="left", fontweight="bold", fontsize=17)
 
     legend_elements_dist = [
-        Line2D([], [], linestyle="None", marker="o", markersize=7, markerfacecolor="white", markeredgecolor="k", label="Impact (ICS)"),
-        Line2D([], [], linestyle="None", marker="s", markersize=7, markerfacecolor="white", markeredgecolor="k", label="Outputs (Papers)"),
-        Line2D([], [], color="k", linestyle="--", label="Mean"),
+        Line2D([], [], linestyle="None", marker="o", markersize=7,
+               markerfacecolor="white", markeredgecolor="k", label="Impact"),
+        Line2D([], [], linestyle="None", marker="s", markersize=7,
+               markerfacecolor="white", markeredgecolor="k", label="Outputs"),
+        Line2D([], [], color="k", linestyle=(0, (1,1)), label="Mean"),
     ]
     ax.legend(
         handles=legend_elements_dist,
         loc="upper center",
         bbox_to_anchor=(0.5, 1.0),
         borderaxespad=0.0,
+        ncol=3,
         fontsize=9,
         frameon=True,
         edgecolor="k",
@@ -350,7 +392,7 @@ def _plot_panel_violins(ax, df_uoa_m):
     )
 
 
-def _plot_ratio(ax, df_uoa_m, show_unit_names: bool):
+def _plot_ratio(ax, df_uoa_m, show_unit_names: bool, uoa_label_map: Dict[int, str]):
     ratio_series = (
         df_uoa_m.set_index("Unit of assessment number")
         .assign(ratio=lambda x: x["pct_female_ics"] / x["pct_female_output"])
@@ -384,7 +426,11 @@ def _plot_ratio(ax, df_uoa_m, show_unit_names: bool):
     ax.grid(linestyle="--", color="k", alpha=0.15)
     ax.set_xlim(-0.5, len(ratio_series) - 0.5)
     ax.set_xticks(positions)
-    ax.set_xticklabels(ratio_series.index, rotation=90, fontsize=8)
+    ax.set_xticklabels(
+        [_format_uoa_label(num, uoa_label_map) for num in ratio_series.index],
+        rotation=90,
+        fontsize=8,
+    )
     ax.tick_params(axis="y", labelsize=11)
     ax.yaxis.tick_right()
     ax.yaxis.set_label_position("right")
@@ -443,36 +489,27 @@ def _style_axes(fig, ax1, ax2, ax3, ax4):
 
     for ax in (ax1, ax2, ax3, ax4):
         ax.spines["top"].set_visible(False)
-        if ax in (ax3, ax4):
-            ax.spines["right"].set_visible(True)
-            ax.spines["left"].set_visible(False)
-        else:
-            ax.spines["right"].set_visible(False)
-            ax.spines["left"].set_visible(True)
         ax.tick_params(axis="both", which="major", labelsize=13)
 
+    ax3.spines["right"].set_visible(True)
+    ax3.spines["left"].set_visible(False)
+    ax3.yaxis.tick_right()
+    ax3.yaxis.set_label_position("right")
+    ax4.spines["left"].set_visible(True)
+    ax4.spines["right"].set_visible(False)
+    ax4.yaxis.tick_left()
+    ax4.yaxis.set_label_position("left")
+    ax1.spines["right"].set_visible(False)
+    ax2.spines["right"].set_visible(False)
     ax4.set_ylim(0.65, 1.85)
-    ax3.set_ylim(-0.5, 12.25)
-
-    ax3.add_patch(
-        Rectangle(
-            (1.0, 0.875),
-            0.03,
-            0.20,
-            transform=ax3.transAxes,
-            facecolor=fig.get_facecolor(),
-            edgecolor="none",
-            clip_on=False,
-            zorder=10,
-        )
-    )
 
     ax1.set_xlim(0.025, 0.7)
     ax1.grid(False)
     ax2.grid(False)
     ax3.grid(False)
     ax4.grid(False)
-    ax4.tick_params(axis="x", labelrotation=0, labelsize=10)
+
+    ax4.tick_params(axis="x", labelrotation=90, labelsize=9)
 
     ax1.xaxis.set_major_formatter(fmt)
     ax1.set_xlabel("Females at UoA Level", fontsize=15)
@@ -482,18 +519,9 @@ def _style_axes(fig, ax1, ax2, ax3, ax4):
     ax2.set_ylabel("Female Outputs (Papers)", fontsize=15)
     ax2.set_xlim(0.05, 0.7)
     ax2.set_ylim(0.05, 0.7)
-
-    ax3.spines["right"].set_color("white")
-    ax3.add_line(
-        Line2D(
-            [1.0, 1.0],
-            [0.0, 0.875],
-            transform=ax3.transAxes,
-            color="k",
-            linewidth=2,
-            zorder=10,
-        )
-    )
+    ax3.xaxis.set_major_formatter(fmt)
+    ax3.set_ylabel("Unit of Assessment", fontsize=15, labelpad=12)
+    ax3.tick_params(axis="y", labelsize=10, pad=6)
 
 
 def _annotate_max_impact(df_uoa_m, ax2, show_unit_names: bool):
@@ -521,14 +549,18 @@ def _annotate_max_impact(df_uoa_m, ax2, show_unit_names: bool):
 
 def plot_figure_one(df_ics, df_uoa_m, show_unit_names: bool = True) -> Tuple[plt.Figure, Iterable]:
     """Create the four-panel figure and return the figure plus axes."""
+    apply_mpl_defaults()
     df_uoa_m = df_uoa_m.copy()
     df_ics = df_ics.copy()
     _ensure_panel_columns(df_uoa_m, df_ics)
+    uoa_label_map = _load_uoa_label_lookup()
     fig, (ax1, ax2, ax3, ax4) = _build_layout()
     _plot_uoa_scatter(ax2, df_uoa_m, show_unit_names)
-    _plot_panel_bubbles(ax3, df_ics)
+    _plot_uoa_percent_bars(ax3, df_uoa_m, uoa_label_map)
     _plot_panel_violins(ax1, df_uoa_m)
-    _plot_ratio(ax4, df_uoa_m, show_unit_names)
+    _plot_ratio(ax4, df_uoa_m, show_unit_names, uoa_label_map)
+    for ax in (ax1, ax2, ax3, ax4):
+        ax.set_title(ax.get_title(), fontweight="bold")
     _style_axes(fig, ax1, ax2, ax3, ax4)
     _annotate_max_impact(df_uoa_m, ax2, show_unit_names)
     return fig, (ax1, ax2, ax3, ax4)
