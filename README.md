@@ -5,13 +5,14 @@ Analytical code and notebooks for studying gender representation in the UK REF (
 
 ## Repository Layout
 - `src/make_figure_one.ipynb` — builds the four-panel gender comparison figure from cleaned data.
-- `src/make_figure_two.ipynb` — renders the regression coefficient plots (OLS vs GLM) from precomputed artifacts.
+- `src/make_figure_two.ipynb` — plots % female authors across `llm_*` industries (overall + by REF panel).
 - `src/make_table_one.ipynb` — prints a readable regression table and writes the LaTeX version.
 - `src/build_regression_models.py` — fits the OLS/GLM models and serializes regression artifacts.
 - `src/build_statistics.ipynb` — printable descriptive and inference statistics for ICS vs Outputs.
 - `src/statistics_summary.py` — helpers used by the statistics notebook.
+- `src/figure_two_llm.py` — helpers for the new Figure 2 showing llm_* female shares.
 - `src/figure_one_data.py`, `src/figure_one_helpers.py`, `src/figure_one_plots.py` — helpers for data prep and plotting Figure 1.
-- `src/figure_two_regression.py` — helpers for regression plotting and LaTeX table generation.
+- `src/figure_two_regression.py` — helpers for regression tables/LaTeX (used by Table 1).
 - `src/make_enhanced_data.py`, `src/make_ref_staff.py` — data acquisition and enrichment utilities.
 - `data/` — expected location for input CSV/XLSX files (not tracked here).
 - `outputs/` — generated figures (`outputs/figures`) and tables (`outputs/tables`); regression artifacts in `outputs/models`.
@@ -38,15 +39,20 @@ Analytical code and notebooks for studying gender representation in the UK REF (
    - `save_wrangled` writes `data/wrangled/{uoa_gender,uni_gender,uniunoa_gender}.csv`.
    - `plot_figure_one` + `save_figure` write `outputs/figures/gender_output_ics_four_panel.{pdf,svg,png}`.
 
-## Regression Models and Outputs (Figure 2 / Table 1)
+## Figure 2 (LLM Female Shares)
+1) Run `src/make_figure_two.ipynb` to load llm_* indicators from `data/final/enhanced_ref_data.csv`.
+2) The notebook writes `outputs/figures/regressions.{pdf,svg,png}` with:
+   - Panel a: overall % female across llm_* industries.
+   - Panel b: % female across llm_* industries split by REF panel.
+
+## Regression Models and Table 1
 1) Fit models and serialize artifacts:
    ```bash
    python -m src.build_regression_models
    ```
    - Produces `outputs/models/regression_results.pkl` containing:
      - `coef_df`, `var_order`, `latex_str`, `metrics_df`.
-2) Figure 2: run `src/make_figure_two.ipynb` to load artifacts and save `outputs/figures/regressions.{pdf,svg,png}`.
-3) Table 1: run `src/make_table_one.ipynb` to print readable coefficients/metrics and write `outputs/tables/regression_results.tex`.
+2) Table 1: run `src/make_table_one.ipynb` to print readable coefficients/metrics and write `outputs/tables/regression_results.tex`.
 
 ## Descriptive & Inference Statistics
 - Run `src/build_statistics.ipynb` to print high-level summaries and one-sided tests comparing female shares in ICS vs outputs (uses `statistics_summary.py` helpers).
