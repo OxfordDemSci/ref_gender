@@ -418,6 +418,7 @@ def _plot_ratio(ax, df_uoa_m, show_unit_names: bool, uoa_label_map: Dict[int, st
     )
 
     mean_ratio = ratio_series.mean()
+    ax.axhline(1.0, color="k", linestyle="-.", lw=1.2, label="Parity", zorder=2)
     ax.axhline(mean_ratio, color="k", linestyle="--", lw=1.5, label=f"Mean = {mean_ratio:.2f}", zorder=2)
 
     ax.set_title("d.", loc="left", fontweight="bold", fontsize=17)
@@ -471,13 +472,14 @@ def _plot_ratio(ax, df_uoa_m, show_unit_names: bool, uoa_label_map: Dict[int, st
             )
 
     legend_elements_d = [
-        Line2D([0], [0], color="k", lw=1.5, linestyle="--", label="Mean Ratio"),
+        Line2D([0], [0], color="k", lw=1.2, linestyle="-.", label="Parity"),
+        Line2D([0], [0], color="k", lw=1.5, linestyle="--", label="Mean"),
     ]
     ax.legend(
         handles=legend_elements_d,
         loc="upper right",
         frameon=True,
-        ncol=3,
+        ncol=1,
         edgecolor="k",
         facecolor=(1, 1, 1, 1),
         framealpha=1.0,
