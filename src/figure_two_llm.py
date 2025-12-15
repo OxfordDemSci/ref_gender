@@ -74,7 +74,7 @@ def _plot_glm_coefficients(ax: plt.Axes, coef_df: pd.DataFrame, var_order: List[
     ax.set_yticklabels(display_labels)
     ax.invert_yaxis()
     ax.set_xlabel("Coefficient (log-odds)", fontsize=15)
-    ax.set_title("a.", loc="left", fontweight="bold", fontsize=17)
+    ax.set_title("b.", loc="left", fontweight="bold", fontsize=17)
     ax.tick_params(axis="both", which="major", labelsize=13)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
@@ -85,7 +85,7 @@ def _plot_glm_coefficients(ax: plt.Axes, coef_df: pd.DataFrame, var_order: List[
         fontsize=11,
         facecolor=(1, 1, 1, 1),
         framealpha=1.0,
-        loc="lower left",
+        loc="lower right",
     )
     ax.grid(False)
 
@@ -117,11 +117,11 @@ def plot_llm_female_share_by_panel(
     )
     ax_panel.set_ylabel("")
     ax_panel.set_xlabel("% female authors in ICS")
-    ax_panel.set_title("b. llm_* topics by panel", loc="left", fontweight="bold")
+    ax_panel.set_title("a.", loc="left", fontweight="bold")
     _format_percent_axes(ax_panel, max_x=100)
-    ax_panel.yaxis.tick_right()
-    ax_panel.yaxis.set_label_position("right")
-    ax_panel.tick_params(axis="y", labelright=True, labelleft=False)
+    ax_panel.yaxis.tick_left()
+    ax_panel.yaxis.set_label_position("left")
+    ax_panel.tick_params(axis="y", labelright=False, labelleft=True)
     fig.tight_layout()
     sns.despine(fig=fig, left=True)
     return ax_panel
@@ -140,7 +140,7 @@ def plot_combined_figure(
     mpl.rcParams["axes.titleweight"] = "bold"
 
     plt.rcParams["axes.unicode_minus"] = False
-    fig, (ax_glm, ax_panel) = plt.subplots(
+    fig, (ax_panel, ax_glm) = plt.subplots(
         1,
         2,
         figsize=(14, 7),
@@ -178,7 +178,7 @@ def plot_combined_figure(
     )
     ax_panel.set_ylabel("")
     ax_panel.set_xlabel("% female authors in ICS", fontsize=15)
-    ax_panel.set_title("b.", loc="left", fontweight="bold", fontsize=17)
+    ax_panel.set_title("a.", loc="left", fontweight="bold", fontsize=17)
     ax_panel.tick_params(axis="both", which="major", labelsize=13)
     handles, labels = ax_panel.get_legend_handles_labels()
     mean_handle = Line2D([0], [0], color="k", linestyle="--", label="Mean")
@@ -192,19 +192,19 @@ def plot_combined_figure(
         edgecolor="k",
         facecolor=(1, 1, 1, 1),
         framealpha=1.0,
-        loc="upper left",
+        loc="upper right",
     )
-    _format_percent_axes(ax_panel, max_x=100)
-    ax_panel.yaxis.tick_right()
-    ax_panel.yaxis.set_label_position("right")
+    _format_percent_axes(ax_panel, max_x=60)
+    ax_glm.yaxis.tick_right()
+    ax_glm.yaxis.set_label_position("right")
     ax_panel.set_yticks(tick_positions)
     ax_panel.set_yticklabels(topic_order_labels)
-    ax_panel.tick_params(axis="y", which="both", labelright=True, labelleft=False, right=True, left=False, length=6)
-    ax_panel.yaxis.set_ticks_position("right")
-    ax_panel.invert_xaxis()
-    ax_panel.spines["top"].set_visible(False)
-    ax_panel.spines["left"].set_visible(False)
-    ax_panel.spines["right"].set_visible(True)
+    ax_panel.tick_params(axis="y", which="both", labelright=False, labelleft=True, right=False, left=True, length=6)
+    ax_glm.invert_xaxis()
+    ax_glm.spines["top"].set_visible(False)
+    ax_glm.spines["left"].set_visible(False)
+    ax_glm.spines["right"].set_visible(True)
+    ax_glm.tick_params(axis="y", which="both", labelleft=False, labelright=True, left=False, right=True, length=6)
     topic_means = panel_plot.groupby("llm_topic_label")["pct_female"].mean()
     y_positions = {label: i for i, label in enumerate(topic_order_labels)}
     for label, mean_val in topic_means.items():
@@ -218,10 +218,12 @@ def plot_combined_figure(
                 linewidth=1.1,
                 clip_on=False,
             )
-    ax_panel.set_xlim(60, 0)
-    sns.despine(ax=ax_glm)
-    sns.despine(ax=ax_panel, left=True, top=True, right=False, bottom=False)
-    ax_panel.yaxis.set_ticks_position("right")
-    ax_panel.tick_params(axis="y", which="both", labelright=True, labelleft=False, right=True, left=False, length=6)
+    ax_panel.set_xlim(0, 60)
+    sns.despine(ax=ax_glm, left=True, top=True, right=False, bottom=False)
+    sns.despine(ax=ax_panel, left=False, top=True, right=True, bottom=False)
+    ax_panel.spines["left"].set_visible(True)
+    ax_panel.spines["right"].set_visible(False)
+    ax_panel.yaxis.set_ticks_position("left")
+    ax_panel.tick_params(axis="y", which="both", labelright=False, labelleft=True, right=False, left=True, length=6)
     fig.tight_layout()
     return fig, (ax_glm, ax_panel)
