@@ -133,7 +133,7 @@ def plot_combined_figure(
     llm_by_panel: pd.DataFrame,
     panel_order: Sequence[str] = ("A", "B", "C", "D"),
 ) -> Tuple[plt.Figure, Tuple[plt.Axes, plt.Axes]]:
-    """Two-panel Figure 2: (a) GLM coefficients, (b) llm_* % female by panel with right-hand axis."""
+    """Two-panel Figure 2: (a) llm_* % female by panel (left axis), (b) GLM coefficients with right-hand axis."""
     apply_mpl_defaults()
     import matplotlib as mpl
     mpl.rcParams["font.family"] = "Helvetica"
@@ -180,6 +180,8 @@ def plot_combined_figure(
     ax_panel.set_xlabel("% female authors in ICS", fontsize=15)
     ax_panel.set_title("a.", loc="left", fontweight="bold", fontsize=17)
     ax_panel.tick_params(axis="both", which="major", labelsize=13)
+    ax_panel.yaxis.tick_left()
+    ax_panel.yaxis.set_label_position("left")
     handles, labels = ax_panel.get_legend_handles_labels()
     mean_handle = Line2D([0], [0], color="k", linestyle="--", label="Mean")
     handles.append(mean_handle)
@@ -204,7 +206,7 @@ def plot_combined_figure(
     ax_glm.spines["top"].set_visible(False)
     ax_glm.spines["left"].set_visible(False)
     ax_glm.spines["right"].set_visible(True)
-    ax_glm.tick_params(axis="y", which="both", labelleft=False, labelright=True, left=False, right=True, length=6)
+    ax_glm.tick_params(axis="y", which="both", labelleft=False, labelright=True, left=True, right=True, length=6)
     topic_means = panel_plot.groupby("llm_topic_label")["pct_female"].mean()
     y_positions = {label: i for i, label in enumerate(topic_order_labels)}
     for label, mean_val in topic_means.items():
