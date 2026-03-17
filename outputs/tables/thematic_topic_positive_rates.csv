@@ -1,0 +1,45 @@
+source,source_label,topic,topic_label,n_valid,n_positive,positive_rate
+regex,Regex,charity,Charity,6361,1676,0.26348058481370856
+regex,Regex,drug_trial,Drug Trial,6361,421,0.06618456217575854
+regex,Regex,heritage,Heritage,6361,344,0.054079547240999844
+regex,Regex,legislation,Legislation,6361,664,0.10438610281402295
+regex,Regex,manufacturing,Manufacturing,6361,407,0.06398365036943877
+regex,Regex,museum,Museum,6361,1196,0.18802075145417388
+regex,Regex,nhs,NHS,6361,1204,0.18927841534349946
+regex,Regex,patent,Patent,6361,407,0.06398365036943877
+regex,Regex,school,School,6361,2005,0.31520201226222294
+regex,Regex,software,Software,6361,687,0.10800188649583399
+regex,Regex,startup,Startup,6361,194,0.03049834931614526
+llmmini,GPT-5-mini,charity,Charity,6361,1421,0.22339254834145575
+llmmini,GPT-5-mini,drug_trial,Drug Trial,6361,245,0.03851595661059582
+llmmini,GPT-5-mini,heritage,Heritage,6361,599,0.09416758371325264
+llmmini,GPT-5-mini,legislation,Legislation,6361,1125,0.17685898443640938
+llmmini,GPT-5-mini,manufacturing,Manufacturing,6361,523,0.08221977676465965
+llmmini,GPT-5-mini,museum,Museum,6361,815,0.12812450872504325
+llmmini,GPT-5-mini,nhs,NHS,6361,1250,0.19650998270712153
+llmmini,GPT-5-mini,patent,Patent,6361,365,0.057380914950479485
+llmmini,GPT-5-mini,school,School,6361,1106,0.17387203269926113
+llmmini,GPT-5-mini,software,Software,6361,1567,0.24634491432164754
+llmmini,GPT-5-mini,startup,Startup,6361,638,0.10029869517371483
+llm51,GPT-5.1,charity,Charity,6361,1960,0.30812765288476657
+llm51,GPT-5.1,drug_trial,Drug Trial,6361,394,0.061939946549284704
+llm51,GPT-5.1,heritage,Heritage,6361,705,0.11083163024681654
+llm51,GPT-5.1,legislation,Legislation,6361,1530,0.24052821883351674
+llm51,GPT-5.1,manufacturing,Manufacturing,6361,609,0.09573966357490961
+llm51,GPT-5.1,museum,Museum,6361,997,0.15673636220720014
+llm51,GPT-5.1,nhs,NHS,6361,1220,0.1917937431221506
+llm51,GPT-5.1,patent,Patent,6361,382,0.06005345071529634
+llm51,GPT-5.1,school,School,6361,1093,0.17182832887910707
+llm51,GPT-5.1,software,Software,6361,1273,0.20012576638893256
+llm51,GPT-5.1,startup,Startup,6361,642,0.10092752711837762
+llm54,GPT-5.4,charity,Charity,6361,1781,0.27998742336110677
+llm54,GPT-5.4,drug_trial,Drug Trial,6361,403,0.06335481842477599
+llm54,GPT-5.4,heritage,Heritage,6361,609,0.09573966357490961
+llm54,GPT-5.4,legislation,Legislation,6361,1179,0.18534821568935703
+llm54,GPT-5.4,manufacturing,Manufacturing,6361,494,0.07766074516585443
+llm54,GPT-5.4,museum,Museum,6361,827,0.1300110045590316
+llm54,GPT-5.4,nhs,NHS,6361,1092,0.17167112089294137
+llm54,GPT-5.4,patent,Patent,6361,377,0.05926741078446785
+llm54,GPT-5.4,school,School,6361,926,0.14557459518943563
+llm54,GPT-5.4,software,Software,6361,1381,0.21710422889482786
+llm54,GPT-5.4,startup,Startup,6361,587,0.09228108787926427

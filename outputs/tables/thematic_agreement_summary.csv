@@ -1,0 +1,2 @@
+n_cases,n_topics,n_topic_rows,n_agree_micro,n_disagree_micro,agreement_rate_micro,agreement_rate_macro,agree_positive_share_micro,agree_positive_share_macro
+6361,11,69971,63919,6052,0.9135070243386546,0.9135070243386546,0.11850936341306967,0.12022578950541617

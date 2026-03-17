@@ -1,0 +1,5 @@
+method,method_label,n_rows,n_rows_nonempty_text,n_missing_cells_all_rows,n_rows_any_positive,total_positive_flags,bad_status_rows_nonempty,disabled_rows_nonempty,missing_status_rows_nonempty,status_counts_nonempty,n_missing_cells_nonempty
+regex,Regex,6361,6361,0,5158,9205,0,0,0,,
+llmmini,GPT-5-mini,6361,6361,0,5575,9654,0,0,0,ok_prompt_cache_fallback:6361,0.0
+llm51,GPT-5.1,6361,6361,0,5546,10805,0,0,0,ok_prompt_cache_fallback:6361,0.0
+llm54,GPT-5.4,6361,6361,0,5336,9656,0,0,0,ok_prompt_cache_fallback:6361,0.0
