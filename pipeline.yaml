@@ -1,0 +1,44 @@
+version: 1
+
+paths:
+  data_dir: data
+  outputs_dir: outputs
+  keys_dir: keys
+
+http:
+  timeout_seconds: 60
+  max_retries: 5
+  backoff_factor: 1.5
+
+openai:
+  enabled: true
+  model: gpt-5.4
+  service_tier: flex
+  prompt_version: v2
+  thematic_batch_size: 12
+  prompt_cache_key: thematic_indicators_v2
+  prompt_cache_retention: 24h
+  key_env_var: OPENAI_API_KEY
+  key_file: keys/OPENAI_API_KEY
+
+dimensions:
+  enabled: true
+  key_env_var: DIMENSIONS_API_KEY
+  key_file: keys/dimensions_apikey.txt
+  endpoint: https://app.dimensions.ai/api/dsl/v2
+
+drift_checks:
+  enhanced_ref_data:
+    row_count_min: 1000
+    row_count_max: 20000
+    max_null_rate:
+      Institution name: 0.01
+      Unit of assessment number: 0.01
+  outputs_concat:
+    row_count_any_min: 50000
+    row_count_any_max: 500000
+    row_count_positive_min: 10000
+    row_count_positive_max: 500000
+    zero_author_rows_min: 1
+    max_null_rate:
+      Institution name: 0.01

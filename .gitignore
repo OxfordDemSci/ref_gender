@@ -209,3 +209,6 @@ data/*
 .idea/*
 keys/*
 .vscode/*
+.github/workflows/pipeline-smoke.yml
+outputs/models/regression_results.pkl
+outputs/models/regression_results.pkl
