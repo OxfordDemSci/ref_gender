@@ -4,7 +4,24 @@ from typing import Tuple
 import numpy as np
 import pandas as pd
 
-from figure_one_helpers import DEFAULT_DATA_ROOT, DEFAULT_UNICLASS_PATH, uoa_to_panel
+try:  # pragma: no cover
+    from .figure_one_helpers import (
+        DEFAULT_DATA_ROOT,
+        DEFAULT_UNICLASS_PATH,
+        resolve_enhanced_ref_data_path,
+        resolve_outputs_concat_path,
+        uoa_to_panel,
+    )
+    from .pipeline_io import read_table
+except ImportError:  # pragma: no cover
+    from figure_one_helpers import (
+        DEFAULT_DATA_ROOT,
+        DEFAULT_UNICLASS_PATH,
+        resolve_enhanced_ref_data_path,
+        resolve_outputs_concat_path,
+        uoa_to_panel,
+    )
+    from pipeline_io import read_table
 
 # REF 2021 Units of Assessment
 UOA_MAP = {
@@ -54,9 +71,13 @@ def _load_inputs(
     """Load raw ICS/output tables and the university classification lookup."""
     data_root = Path(data_root)
     uniclass_path = Path(uniclass_path)
-    df_output = pd.read_csv(data_root / "dimensions_outputs/outputs_concat_with_positive_authors.csv")
-    df_ics = pd.read_csv(data_root / "final/enhanced_ref_data.csv")
-    df_uniclass = pd.read_csv(uniclass_path)
+    outputs_path = resolve_outputs_concat_path(data_root)
+    enhanced_path = resolve_enhanced_ref_data_path(data_root)
+    if not uniclass_path.exists():
+        uniclass_path = data_root / "manual" / "university_category" / "ref_unique_institutions.csv"
+    df_output = read_table(outputs_path)
+    df_ics = read_table(enhanced_path)
+    df_uniclass = read_table(uniclass_path)
     return df_output, df_ics, df_uniclass
 
 
