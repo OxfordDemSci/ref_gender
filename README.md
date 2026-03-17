@@ -1,4 +1,4 @@
-# REF Gender Analysis (Journal Submission Repository)
+# Gendered Impact in Academic Research
 
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue)
 ![License](https://img.shields.io/badge/license-GPLv3-green)
