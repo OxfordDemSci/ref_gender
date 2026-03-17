@@ -5,8 +5,24 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
-from figure_one_helpers import DEFAULT_DATA_ROOT, uoa_to_panel
-from figure_one_data import prepare_figure_one_data, UOA_MAP
+try:  # pragma: no cover
+    from .figure_one_helpers import (
+        DEFAULT_DATA_ROOT,
+        resolve_enhanced_ref_data_path,
+        resolve_outputs_concat_path,
+        uoa_to_panel,
+    )
+    from .figure_one_data import UOA_MAP, prepare_figure_one_data
+    from .pipeline_io import read_table
+except ImportError:  # pragma: no cover
+    from figure_one_helpers import (
+        DEFAULT_DATA_ROOT,
+        resolve_enhanced_ref_data_path,
+        resolve_outputs_concat_path,
+        uoa_to_panel,
+    )
+    from figure_one_data import UOA_MAP, prepare_figure_one_data
+    from pipeline_io import read_table
 
 ALPHA = 0.05
 
@@ -17,8 +33,8 @@ def load_statistics_data(data_root: Path = DEFAULT_DATA_ROOT):
     Returns (df_output, df_ics, df_uoa_m, df_uni_m, df_uniuoa_m).
     """
     data_root = Path(data_root)
-    df_output = pd.read_csv(data_root / "dimensions_outputs/outputs_concat_with_positive_authors.csv")
-    df_ics = pd.read_csv(data_root / "final/enhanced_ref_data.csv")
+    df_output = read_table(resolve_outputs_concat_path(data_root))
+    df_ics = read_table(resolve_enhanced_ref_data_path(data_root))
     df_ics, df_uoa_m, df_uni_m, df_uniuoa_m = prepare_figure_one_data(data_root)
     return df_output, df_ics, df_uoa_m, df_uni_m, df_uniuoa_m
 
@@ -160,7 +176,10 @@ def _uoa_table(df_ics: pd.DataFrame, df_output: pd.DataFrame) -> pd.DataFrame:
 
 
 def _llm_table(df_ics: pd.DataFrame) -> pd.DataFrame:
+    df_ics = df_ics.copy()
     llm_cols = [c for c in df_ics.columns if c.startswith("llm_")]
+    for col in llm_cols:
+        df_ics[col] = pd.to_numeric(df_ics[col], errors="coerce").fillna(0)
     total_female_ics = df_ics["number_female"].sum()
     rows = []
     for col in llm_cols:
@@ -184,7 +203,10 @@ def _llm_table(df_ics: pd.DataFrame) -> pd.DataFrame:
 
 def _llm_panel_table(df_ics: pd.DataFrame) -> pd.DataFrame:
     df_ics = _ensure_panel(df_ics)
+    df_ics = df_ics.copy()
     llm_cols = [c for c in df_ics.columns if c.startswith("llm_")]
+    for col in llm_cols:
+        df_ics[col] = pd.to_numeric(df_ics[col], errors="coerce").fillna(0)
     panel_order = ["A", "B", "C", "D"]
     rows = []
     for panel in panel_order:
@@ -344,7 +366,13 @@ def llm_female_share_tables(df_ics: pd.DataFrame, panel_order: Iterable[str] = (
       - overall across all ICS
       - split by REF panel.
     """
+    df_ics = df_ics.copy()
     llm_cols: List[str] = [c for c in df_ics.columns if c.startswith("llm_")]
+    for col in llm_cols:
+        df_ics[col] = pd.to_numeric(df_ics[col], errors="coerce").fillna(0)
+    for col in ("number_female", "number_male"):
+        if col in df_ics.columns:
+            df_ics[col] = pd.to_numeric(df_ics[col], errors="coerce").fillna(0)
     panel_order = list(panel_order)
 
     def _rows(frame: pd.DataFrame, extra_cols: Dict | None = None):
