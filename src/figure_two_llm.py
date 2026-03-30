@@ -47,7 +47,7 @@ PANEL_DISPLAY_LABELS = {
     "C": "Panel C:\nSocial Sciences",
     "D": "Panel D:\nHumanities",
 }
-MODEL_COLORS = ("#1B9E77", "#D95F02", "#7570B3")
+MODEL_COLORS = ("#B2182B", "#0072B2", "#E76F00")
 DISCIPLINE_VARS = ("C(MainPanel)[T.B]", "C(MainPanel)[T.C]", "C(MainPanel)[T.D]")
 UNIVERSITY_VARS = ("OxBridge", "Redbrick", "Ancient", "RussellGroup")
 IMPACT_DOMAIN_VARS = (
@@ -352,13 +352,22 @@ def _draw_vertical_curly_brace(
     width_axes: float = 0.042,
     label_x_axes: float | None = None,
     label_rotation: float = 90,
+    label_ha: str = "center",
+    label_fontsize: float = 12,
+    label_rotation_mode: str = "anchor",
+    tip_factor: float = 1.5,
+    curve_factor: float = 0.5,
+    shoulder_factor: float = 0.3,
+    shoulder_cap: float | None = None,
 ):
     if y_bottom <= y_top:
         return
     y_mid = (y_top + y_bottom) / 2
-    shoulder = (y_bottom - y_top) * 0.3
-    tip_x = x_axes - (1.5 * width_axes)
-    curve_ctrl_x = x_axes - (.50 * width_axes)
+    shoulder = (y_bottom - y_top) * float(shoulder_factor)
+    if shoulder_cap is not None:
+        shoulder = min(shoulder, float(shoulder_cap))
+    tip_x = x_axes - (float(tip_factor) * width_axes)
+    curve_ctrl_x = x_axes - (float(curve_factor) * width_axes)
     verts = [
         (x_axes + width_axes, y_top),
         (x_axes, y_top),
@@ -399,11 +408,11 @@ def _draw_vertical_curly_brace(
         y_mid,
         label,
         transform=transform,
-        ha="center",
+        ha=label_ha,
         va="center",
-        fontsize=12,
+        fontsize=label_fontsize,
         rotation=label_rotation,
-        rotation_mode="anchor",
+        rotation_mode=label_rotation_mode,
         multialignment="center",
         clip_on=False,
     )
@@ -422,6 +431,13 @@ def _add_coefficient_group_braces(
     impact_label_right: str = "Impact\nDomains",
     right_brace_scale: float = 1.0,
     label_x_override: float | None = None,
+    label_ha_override: str | None = None,
+    label_fontsize_override: float | None = None,
+    label_rotation_mode_override: str | None = None,
+    tip_factor_override: float | None = None,
+    curve_factor_override: float | None = None,
+    shoulder_factor_override: float | None = None,
+    shoulder_cap_override: float | None = None,
 ):
     divider_one, divider_two = _divider_positions(
         variables,
@@ -438,6 +454,7 @@ def _add_coefficient_group_braces(
         brace_x = 1.0 - brace_width
         label_x = label_x_override
         label_rotation = -90
+        label_ha = "center"
         label_disciplines = discipline_label
         label_university = university_label
         label_impact = impact_label_right
@@ -447,9 +464,18 @@ def _add_coefficient_group_braces(
         brace_x = -brace_width
         label_x = label_x_override
         label_rotation = 90
+        label_ha = "center"
         label_disciplines = discipline_label
         label_university = university_label
         label_impact = impact_label_left
+    label_fontsize = 12.0 if label_fontsize_override is None else float(label_fontsize_override)
+    label_rotation_mode = "anchor" if label_rotation_mode_override is None else str(label_rotation_mode_override)
+    tip_factor = 1.5 if tip_factor_override is None else float(tip_factor_override)
+    curve_factor = 0.5 if curve_factor_override is None else float(curve_factor_override)
+    shoulder_factor = 0.3 if shoulder_factor_override is None else float(shoulder_factor_override)
+    shoulder_cap = None if shoulder_cap_override is None else float(shoulder_cap_override)
+    if label_ha_override is not None:
+        label_ha = str(label_ha_override)
 
     if divider_one is not None:
         _draw_vertical_curly_brace(
@@ -461,6 +487,13 @@ def _add_coefficient_group_braces(
             width_axes=brace_width,
             label_x_axes=label_x,
             label_rotation=label_rotation,
+            label_ha=label_ha,
+            label_fontsize=label_fontsize,
+            label_rotation_mode=label_rotation_mode,
+            tip_factor=tip_factor,
+            curve_factor=curve_factor,
+            shoulder_factor=shoulder_factor,
+            shoulder_cap=shoulder_cap,
         )
 
     if divider_one is not None and divider_two is not None:
@@ -473,6 +506,13 @@ def _add_coefficient_group_braces(
             width_axes=brace_width,
             label_x_axes=label_x,
             label_rotation=label_rotation,
+            label_ha=label_ha,
+            label_fontsize=label_fontsize,
+            label_rotation_mode=label_rotation_mode,
+            tip_factor=tip_factor,
+            curve_factor=curve_factor,
+            shoulder_factor=shoulder_factor,
+            shoulder_cap=shoulder_cap,
         )
 
     if divider_two is not None:
@@ -485,6 +525,13 @@ def _add_coefficient_group_braces(
             width_axes=brace_width,
             label_x_axes=label_x,
             label_rotation=label_rotation,
+            label_ha=label_ha,
+            label_fontsize=label_fontsize,
+            label_rotation_mode=label_rotation_mode,
+            tip_factor=tip_factor,
+            curve_factor=curve_factor,
+            shoulder_factor=shoulder_factor,
+            shoulder_cap=shoulder_cap,
         )
 
 
@@ -508,6 +555,15 @@ def _plot_ols_coefficients(
     impact_label_right: str = "Impact\nDomains",
     show_braces: bool = True,
     brace_label_x_override: float | None = None,
+    brace_label_ha_override: str | None = None,
+    brace_label_fontsize_override: float | None = None,
+    brace_label_rotation_mode_override: str | None = None,
+    brace_tip_factor_override: float | None = None,
+    brace_curve_factor_override: float | None = None,
+    brace_shoulder_factor_override: float | None = None,
+    brace_shoulder_cap_override: float | None = None,
+    marker_alpha: float = 1.0,
+    whisker_alpha: float = NON_VIOLIN_ALPHA,
     invert_y_axis: bool = True,
 ):
     """Single-panel OLS coefficient plot for Figure 2b."""
@@ -528,18 +584,21 @@ def _plot_ols_coefficients(
         if dfm.empty:
             continue
         xerr = np.vstack([dfm["coef"] - dfm["ci_low"], dfm["ci_high"] - dfm["coef"]])
-        whisker_color = mcolors.to_rgba(color, NON_VIOLIN_ALPHA)
-        marker_color = mcolors.to_rgba(color, 1.0)
+        whisker_color = mcolors.to_rgba(color, float(whisker_alpha))
+        marker_color = mcolors.to_rgba(color, float(marker_alpha))
         ax.errorbar(
             dfm["coef"],
             dfm["y_plot"] + offset,
             xerr=xerr,
             fmt="o",
             markeredgecolor=(0, 0, 0, 1.0),
+            elinewidth=2.0,
+            capsize=7.5,
+            capthick=2.0,
+            markeredgewidth=1.25,
             markerfacecolor=marker_color,
             color=marker_color,
             ecolor=whisker_color,
-            capsize=5,
             label=_model_legend_label(i),
         )
     ax.axvline(0, linestyle="--", linewidth=2, color="k")
@@ -560,6 +619,13 @@ def _plot_ols_coefficients(
             impact_label_left=impact_label_left,
             impact_label_right=impact_label_right,
             label_x_override=brace_label_x_override,
+            label_ha_override=brace_label_ha_override,
+            label_fontsize_override=brace_label_fontsize_override,
+            label_rotation_mode_override=brace_label_rotation_mode_override,
+            tip_factor_override=brace_tip_factor_override,
+            curve_factor_override=brace_curve_factor_override,
+            shoulder_factor_override=brace_shoulder_factor_override,
+            shoulder_cap_override=brace_shoulder_cap_override,
         )
     ax.xaxis.set_major_formatter(PercentFormatter(xmax=1.0, decimals=0))
     ax.set_xlabel("Associated Change in Women ICS Authors", fontsize=15)
@@ -580,8 +646,7 @@ def _plot_ols_coefficients(
         loc=legend_loc,
     )
     ax.set_axisbelow(True)
-    ax.xaxis.grid(True, which="major", linestyle="--", linewidth=0.75, alpha=0.32)
-    ax.yaxis.grid(True, which="major", linestyle="--", linewidth=0.75, alpha=0.32)
+    ax.grid(False)
 
 
 def _plot_glm_coefficients(
@@ -604,6 +669,15 @@ def _plot_glm_coefficients(
     show_braces: bool = True,
     right_brace_scale: float = 1.0,
     brace_label_x_override: float | None = None,
+    brace_label_ha_override: str | None = None,
+    brace_label_fontsize_override: float | None = None,
+    brace_label_rotation_mode_override: str | None = None,
+    brace_tip_factor_override: float | None = None,
+    brace_curve_factor_override: float | None = None,
+    brace_shoulder_factor_override: float | None = None,
+    brace_shoulder_cap_override: float | None = None,
+    marker_alpha: float = 1.0,
+    whisker_alpha: float = NON_VIOLIN_ALPHA,
     invert_y_axis: bool = True,
 ):
     """Single-panel GLM coefficient plot for supplementary Figure 1b."""
@@ -624,8 +698,8 @@ def _plot_glm_coefficients(
         if dfm.empty:
             continue
         xerr = np.vstack([dfm["coef"] - dfm["ci_low"], dfm["ci_high"] - dfm["coef"]])
-        whisker_color = mcolors.to_rgba(color, NON_VIOLIN_ALPHA)
-        marker_color = mcolors.to_rgba(color, 1.0)
+        whisker_color = mcolors.to_rgba(color, float(whisker_alpha))
+        marker_color = mcolors.to_rgba(color, float(marker_alpha))
         ax.errorbar(
             dfm["coef"],
             dfm["y_plot"] + offset,
@@ -635,7 +709,10 @@ def _plot_glm_coefficients(
             markerfacecolor=marker_color,
             color=marker_color,
             ecolor=whisker_color,
-            capsize=5,
+            elinewidth=2.0,
+            capsize=7.5,
+            capthick=2.0,
+            markeredgewidth=1.25,
             label=_model_legend_label(i),
         )
     ax.axvline(0, linestyle="--", linewidth=2, color="k")
@@ -657,6 +734,13 @@ def _plot_glm_coefficients(
             impact_label_right=impact_label_right,
             right_brace_scale=right_brace_scale,
             label_x_override=brace_label_x_override,
+            label_ha_override=brace_label_ha_override,
+            label_fontsize_override=brace_label_fontsize_override,
+            label_rotation_mode_override=brace_label_rotation_mode_override,
+            tip_factor_override=brace_tip_factor_override,
+            curve_factor_override=brace_curve_factor_override,
+            shoulder_factor_override=brace_shoulder_factor_override,
+            shoulder_cap_override=brace_shoulder_cap_override,
         )
     ax.set_xlabel("Associated Change in Women ICS Authors (log-odds, GLM)", fontsize=15)
     if panel_title is not None:
@@ -676,8 +760,7 @@ def _plot_glm_coefficients(
         loc=legend_loc,
     )
     ax.set_axisbelow(True)
-    ax.xaxis.grid(True, which="major", linestyle="--", linewidth=0.75, alpha=0.32)
-    ax.yaxis.grid(True, which="major", linestyle="--", linewidth=0.75, alpha=0.32)
+    ax.grid(False)
 
 
 def _plot_topic_female_share_panel(
@@ -767,8 +850,7 @@ def _plot_topic_female_share_panel(
             )
     ax_panel.set_xlim(0, x_max)
     ax_panel.set_axisbelow(True)
-    ax_panel.xaxis.grid(True, which="major", linestyle="--", linewidth=0.75, alpha=0.32)
-    ax_panel.yaxis.grid(True, which="major", linestyle="--", linewidth=0.75, alpha=0.32)
+    ax_panel.grid(False)
 
 
 def plot_llm_female_share_by_panel(
@@ -851,6 +933,8 @@ def plot_combined_figure(
         ordered_var_order,
         MODEL_COLORS,
         brace_label_x_override=-0.125,
+        marker_alpha=1.0,
+        whisker_alpha=1.0,
     )
     ax_coef.set_xlim(left=-0.3)
     _plot_topic_female_share_panel(
@@ -937,7 +1021,7 @@ def plot_supplementary_figure_two(
     plt.rcParams["axes.unicode_minus"] = False
 
     # Single-panel GLM figure: same height as Figure 2, just slightly wider.
-    fig, ax = plt.subplots(1, 1, figsize=(15, 6.3))
+    fig, ax = plt.subplots(1, 1, figsize=(12.2, 6.3))
     ordered_var_order = _ordered_variables_for_coefficients(coef_df, var_order)
     _plot_glm_coefficients(
         ax,
@@ -948,13 +1032,21 @@ def plot_supplementary_figure_two(
         brace_side="right",
         legend_loc="lower left",
         legend_fontsize=12,
-        right_brace_scale=0.5,
-        brace_label_x_override=1.05,
+        right_brace_scale=0.2,
+        discipline_label="Disciplines\n(ref. Panel A)",
+        brace_label_fontsize_override=12,
+        brace_label_rotation_mode_override="default",
+        brace_tip_factor_override=2.8,
+        brace_curve_factor_override=0.26,
+        brace_shoulder_factor_override=0.2,
+        brace_shoulder_cap_override=1.0,
+        marker_alpha=1.0,
+        whisker_alpha=1.0,
     )
     ax.set_xlim(right=0.5)
     ax.tick_params(axis="y", which="both", labelleft=True, labelright=False, left=True, right=False, length=6)
     sns.despine(ax=ax, left=False, top=True, right=True, bottom=False)
-    fig.tight_layout(rect=(0, 0, 0.82, 1))
+    fig.tight_layout(pad=0.2)
     return fig, ax
 
 
@@ -983,7 +1075,7 @@ def plot_supplementary_figure_three(
         discipline_vars=discipline_vars,
         university_vars=UNIVERSITY_VARS,
     )
-    discipline_label = "Disciplines\nReference group: UoA 1 (Clinical Medicine)"
+    discipline_label = "Disciplines\nReference: UoA 1 (Clinical Medicine)"
 
     fig, (ax_ols, ax_glm) = plt.subplots(
         1,
@@ -1011,6 +1103,8 @@ def plot_supplementary_figure_three(
         impact_label_left="Impact\nDomains",
         impact_label_right="Impact\nDomains",
         show_braces=False,
+        marker_alpha=1.0,
+        whisker_alpha=1.0,
     )
     ax_ols.set_xlabel("Associated Change in Women\nICS Authors", fontsize=15)
     ax_ols.tick_params(axis="y", which="both", labelleft=True, labelright=False, left=True, right=False, length=6, labelsize=9)
@@ -1034,6 +1128,8 @@ def plot_supplementary_figure_three(
         impact_label_right="Impact\nDomains",
         right_brace_scale=0.9,
         brace_label_x_override=1.12,
+        marker_alpha=1.0,
+        whisker_alpha=1.0,
         invert_y_axis=False,
     )
     ax_glm.set_xlabel("Associated Change in Women\nICS Authors (log-odds, GLM)", fontsize=15)
