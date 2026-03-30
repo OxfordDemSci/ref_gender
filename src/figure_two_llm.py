@@ -47,7 +47,7 @@ PANEL_DISPLAY_LABELS = {
     "C": "Panel C:\nSocial Sciences",
     "D": "Panel D:\nHumanities",
 }
-MODEL_COLORS = ("#B2182B", "#0072B2", "#E76F00")
+MODEL_COLORS = ("#B2182B", "#E76F00", "#0072B2")
 DISCIPLINE_VARS = ("C(MainPanel)[T.B]", "C(MainPanel)[T.C]", "C(MainPanel)[T.D]")
 UNIVERSITY_VARS = ("OxBridge", "Redbrick", "Ancient", "RussellGroup")
 IMPACT_DOMAIN_VARS = (
