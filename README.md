@@ -49,14 +49,14 @@ The repository operationalises this with:
 - `src/step05_build_regression_models.py`
   - Fits weighted OLS + GLM specifications and writes `outputs/models/regression_results.pkl`.
 - `src/step06_make_figure_two.py`
-  - Rebuilds Figure 2 and `supplementary_figure_1`.
+  - Rebuilds Figure 2 and `supplementary_figure_2`.
 - `src/step07_make_table_one.py`
   - Rebuilds Table 1 LaTeX (`outputs/tables/regression_results.tex`).
 - `src/step08_build_statistics.py`
   - Rebuilds descriptive/inference report + summary LaTeX tables.
 - `src/step09_evaluate_thematic_indicators.py`
   - Cross-method thematic comparison across Regex / GPT-5-mini / GPT-5.1 / GPT-5.4.
-  - Produces `supplementary_figure_2` and agreement/coverage tables.
+  - Produces `supplementary_figure_1`, `supplementary_figure_4`, and agreement/coverage tables.
 - `src/step10_analyze_ics_text_gender.py`
   - Word-level association analysis for ICS text vs case-level female share outcome.
 
@@ -129,11 +129,11 @@ Key defaults include:
 | 03 | `step03_get_dimensions_research_outputs.py` | Dimensions API (unless `--skip-api`) | `data/gold/outputs_concat_*.{parquet,csv}` |
 | 04 | `step04_make_figure_one.py` | none | `outputs/figures/figure_one.{pdf,svg,png}` |
 | 05 | `step05_build_regression_models.py` | none | `outputs/models/regression_results.pkl` |
-| 06 | `step06_make_figure_two.py` | none | `outputs/figures/figure_two.*`, `outputs/figures/supplementary_figure_1.*` |
+| 06 | `step06_make_figure_two.py` | none | `outputs/figures/figure_two.*`, `outputs/figures/supplementary_figure_2.*` |
 | 07 | `step07_make_table_one.py` | none | `outputs/tables/regression_results.tex` |
 | 08 | `step08_build_statistics.py` | none | `outputs/tables/statistics_report.txt`, summary `.tex` tables |
-| 09 | `step09_evaluate_thematic_indicators.py` | none | `outputs/figures/supplementary_figure_2.*`, thematic diagnostics `.csv` |
-| 10 | `step10_analyze_ics_text_gender.py` | none | `outputs/figures/step10_word_associations.*`, step10 tables |
+| 09 | `step09_evaluate_thematic_indicators.py` | none | `outputs/figures/supplementary_figure_1.*`, `outputs/figures/supplementary_figure_4.*`, thematic diagnostics `.csv` |
+| 10 | `step10_analyze_ics_text_gender.py` | none | `outputs/figures/supplementary_figure_5.*`, step10 tables |
 
 ## 6. Reproducibility Workflows
 
@@ -201,7 +201,8 @@ python -m src.step01_make_enhanced_data --with-llm --force
 - `outputs/figures/figure_two.{pdf,svg,png}`
 - `outputs/figures/supplementary_figure_1.{pdf,svg,png}`
 - `outputs/figures/supplementary_figure_2.{pdf,svg,png}`
-- `outputs/figures/step10_word_associations.{pdf,svg,png}`
+- `outputs/figures/supplementary_figure_4.{pdf,svg,png}`
+- `outputs/figures/supplementary_figure_5.{pdf,svg,png}`
 
 ### 8.2 Tables
 - `outputs/tables/regression_results.tex`
@@ -214,9 +215,9 @@ python -m src.step01_make_enhanced_data --with-llm --force
 - `outputs/tables/thematic_pairwise_agreement_summary.csv`
 - `outputs/tables/thematic_topic_positive_rates.csv`
 - `outputs/tables/statistics_report.txt`
-- `outputs/tables/step10_word_associations_all.csv`
-- `outputs/tables/step10_word_associations_top_positive.csv`
-- `outputs/tables/step10_word_associations_top_negative.csv`
+- `outputs/tables/supplementary_figure_5_all.csv`
+- `outputs/tables/supplementary_figure_5_top_positive.csv`
+- `outputs/tables/supplementary_figure_5_top_negative.csv`
 
 ### 8.3 Model artifacts
 - `outputs/models/regression_results.pkl`
