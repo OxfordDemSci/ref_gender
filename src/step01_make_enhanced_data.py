@@ -277,6 +277,95 @@ def get_paths(paths: PipelinePaths):
     )
 
 
+def _base_stata_column_name(name: str) -> str:
+    """
+    Convert an arbitrary column label into a Stata-safe base variable name.
+    """
+    value = unicodedata.normalize("NFKD", str(name)).encode("ascii", "ignore").decode("ascii")
+    value = value.lower().strip()
+    value = re.sub(r"[^a-z0-9_]+", "_", value)
+    value = re.sub(r"_+", "_", value).strip("_")
+    if not value:
+        value = "var"
+    if re.match(r"^[0-9]", value):
+        value = f"v_{value}"
+    return value
+
+
+def _make_unique_stata_column_names(columns: list[str], max_length: int = 32) -> tuple[list[str], pd.DataFrame]:
+    """
+    Build unique, <=32-char Stata variable names and return a mapping table.
+    """
+    used: set[str] = set()
+    new_cols: list[str] = []
+    mapping_rows: list[dict[str, str]] = []
+
+    for col in columns:
+        base = _base_stata_column_name(col)
+        candidate = base[:max_length]
+        suffix_idx = 1
+        while candidate in used:
+            suffix = f"_{suffix_idx}"
+            candidate = f"{base[:max_length - len(suffix)]}{suffix}"
+            suffix_idx += 1
+        used.add(candidate)
+        new_cols.append(candidate)
+        mapping_rows.append({"original_column": str(col), "stata_column": candidate})
+
+    return new_cols, pd.DataFrame(mapping_rows)
+
+
+def _atomic_write_stata(df: pd.DataFrame, out_path: Path, *, version: int = 118, convert_strl: list[str] | None = None) -> None:
+    """
+    Write a Stata .dta file atomically to avoid partial files on interruption.
+    """
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = out_path.with_suffix(out_path.suffix + ".tmp")
+    if tmp_path.exists():
+        tmp_path.unlink()
+    df.to_stata(
+        tmp_path,
+        write_index=False,
+        version=version,
+        convert_strl=convert_strl or [],
+    )
+    tmp_path.replace(out_path)
+
+
+def write_final_clean_exports(df: pd.DataFrame, final_dir: Path) -> dict[str, Path]:
+    """
+    Write cleaned final exports for downstream users:
+      - Stata-safe cleaned CSV
+      - Stata .dta
+      - original->Stata column mapping CSV
+    """
+    final_dir = Path(final_dir)
+    final_dir.mkdir(parents=True, exist_ok=True)
+
+    cleaned_csv_path = final_dir / "enhanced_ref_data_clean_final.csv"
+    cleaned_dta_path = final_dir / "enhanced_ref_data_clean_final.dta"
+    column_map_path = final_dir / "enhanced_ref_data_stata_column_map.csv"
+
+    cleaned_df = df.copy()
+    stata_columns, column_map_df = _make_unique_stata_column_names([str(c) for c in cleaned_df.columns])
+    cleaned_df.columns = stata_columns
+
+    object_cols = [c for c in cleaned_df.columns if cleaned_df[c].dtype == "object"]
+    for col in object_cols:
+        cleaned_df[col] = cleaned_df[col].where(cleaned_df[col].notna(), None)
+
+    atomic_write_csv(cleaned_df, cleaned_csv_path)
+    _atomic_write_stata(cleaned_df, cleaned_dta_path, version=118, convert_strl=object_cols)
+    atomic_write_csv(column_map_df, column_map_path)
+
+    return {
+        "cleaned_csv_path": cleaned_csv_path,
+        "cleaned_dta_path": cleaned_dta_path,
+        "column_map_path": column_map_path,
+    }
+
+
 @log_row_count
 def load_dept_vars(df: pd.DataFrame, edit_path: Path) -> pd.DataFrame:
     """Load department vars, compute GPAs, and merge."""
@@ -1125,6 +1214,9 @@ def main(argv: list[str] | None = None) -> int:
         "enhanced_gold_csv": gold_csv_path,
         "enhanced_legacy_csv": legacy_csv_path,
         "enhanced_legacy_zip": legacy_zip_path,
+        "enhanced_clean_final_csv": paths.legacy_final_dir / "enhanced_ref_data_clean_final.csv",
+        "enhanced_clean_final_dta": paths.legacy_final_dir / "enhanced_ref_data_clean_final.dta",
+        "enhanced_stata_column_map": paths.legacy_final_dir / "enhanced_ref_data_stata_column_map.csv",
         "clean_ref_dep_data": Path(edit_path) / "clean_ref_dep_data.xlsx",
         "clean_ref_ics_data": Path(edit_path) / "clean_ref_ics_data.xlsx",
         "llm_categories_cache": paths.data_dir / "openai" / "categories.csv",
@@ -1253,6 +1345,7 @@ def main(argv: list[str] | None = None) -> int:
         atomic_write_csv(df, gold_csv_path)
         atomic_write_csv(df, legacy_csv_path)
         df.to_csv(legacy_zip_path, index=False, compression=dict(method="zip", archive_name="enhanced_ref_data.csv"))
+        final_exports = write_final_clean_exports(df, paths.legacy_final_dir)
         if output_path.suffix.lower() == ".csv":
             atomic_write_csv(df, output_path)
         elif output_path.suffix.lower() == ".parquet":
@@ -1261,6 +1354,9 @@ def main(argv: list[str] | None = None) -> int:
             # default to CSV for unknown extension requests
             atomic_write_csv(df, output_path)
         print(f"Saved enhanced dataset to: {output_path}")
+        print(f"Saved cleaned final CSV to: {final_exports['cleaned_csv_path']}")
+        print(f"Saved Stata DTA to: {final_exports['cleaned_dta_path']}")
+        print(f"Saved Stata column map to: {final_exports['column_map_path']}")
     except Exception as exc:  # noqa: BLE001
         manifest_status = "failed"
         manifest_notes = str(exc)

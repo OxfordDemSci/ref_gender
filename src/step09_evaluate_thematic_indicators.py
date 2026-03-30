@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+from matplotlib.lines import Line2D
 from matplotlib.ticker import PercentFormatter
 
 try:  # pragma: no cover
@@ -36,6 +37,13 @@ METHOD_DISPLAY = {
     "llmmini": "GPT-5-mini",
     "llm51": "GPT-5.1",
     "llm54": "GPT-5.4",
+}
+PANEL_ORDER = ("A", "B", "C", "D")
+PANEL_DISPLAY_LABELS = {
+    "A": "Panel A:\nLife Sciences",
+    "B": "Panel B:\nPhysical Sciences",
+    "C": "Panel C:\nSocial Sciences",
+    "D": "Panel D:\nHumanities",
 }
 
 PAIR_SPECS: dict[str, tuple[str, str, str]] = {
@@ -93,6 +101,192 @@ def _format_topic_label(topic: str) -> str:
     if str(topic).strip().lower() == "nhs":
         return "NHS"
     return str(topic).replace("_", " ").title()
+
+
+def _ensure_panel_column(df: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy()
+    if "Panel" not in out.columns:
+        if "Main Panel" in out.columns:
+            out["Panel"] = out["Main Panel"]
+        else:
+            raise ValueError("Input table requires either 'Panel' or 'Main Panel' column.")
+    out["Panel"] = out["Panel"].astype(str).str.strip()
+    return out
+
+
+def _build_topic_by_panel_for_method(
+    df: pd.DataFrame,
+    topics: list[str],
+    *,
+    method_prefix: str,
+    panel_order: tuple[str, ...] = PANEL_ORDER,
+) -> pd.DataFrame:
+    required = {"number_female", "number_male"}
+    missing = sorted(required.difference(df.columns))
+    if missing:
+        raise ValueError(f"Missing required columns for topic female-share chart: {missing}")
+
+    frame = _ensure_panel_column(df)
+    frame["number_female"] = pd.to_numeric(frame["number_female"], errors="coerce").fillna(0.0)
+    frame["number_male"] = pd.to_numeric(frame["number_male"], errors="coerce").fillna(0.0)
+
+    rows: list[dict[str, object]] = []
+    for topic in topics:
+        col = f"{method_prefix}_{topic}"
+        if col not in frame.columns:
+            continue
+        pred = pd.to_numeric(frame[col], errors="coerce").fillna(0)
+        for panel in panel_order:
+            subset = frame.loc[(frame["Panel"] == panel) & (pred > 0)]
+            female = float(subset["number_female"].sum())
+            male = float(subset["number_male"].sum())
+            total_people = female + male
+            rows.append(
+                {
+                    "method_prefix": method_prefix,
+                    "panel": panel,
+                    "topic": topic,
+                    "topic_label": _format_topic_label(topic),
+                    "n_cases": int(len(subset)),
+                    "pct_female": (female / total_people) * 100.0 if total_people else np.nan,
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+def _topic_order_labels(
+    df: pd.DataFrame,
+    topics: list[str],
+    *,
+    reference_prefix: str = "llm54",
+) -> list[str]:
+    default_order = [_format_topic_label(t) for t in topics]
+    ref = _build_topic_by_panel_for_method(df, topics, method_prefix=reference_prefix)
+    if ref.empty:
+        return default_order
+    order = (
+        ref.groupby("topic_label")["pct_female"]
+        .mean()
+        .sort_values(ascending=True)
+        .index.tolist()
+    )
+    order_set = set(order)
+    order.extend([label for label in default_order if label not in order_set])
+    return order
+
+
+def _plot_single_topic_panel_bar(
+    ax: plt.Axes,
+    method_df: pd.DataFrame,
+    *,
+    topic_order_labels: list[str],
+    title: str,
+    approach_label: str,
+    x_max: float,
+    show_legend: bool,
+    title_loc: str = "left",
+) -> None:
+    plot_df = method_df.copy()
+    plot_df["topic_label"] = pd.Categorical(
+        plot_df["topic_label"], categories=topic_order_labels, ordered=True
+    )
+    sns.barplot(
+        data=plot_df,
+        y="topic_label",
+        x="pct_female",
+        hue="panel",
+        hue_order=list(PANEL_ORDER),
+        edgecolor="k",
+        width=0.58,
+        palette=[PANEL_COLORS.get(p, "#999999") for p in PANEL_ORDER],
+        ax=ax,
+    )
+
+    ax.set_title(title, loc=title_loc, fontweight="bold", fontsize=15)
+    ax.set_ylabel("")
+    ax.set_xlabel(f"Share of Women ({approach_label})", fontsize=13)
+    ax.set_xlim(0, x_max)
+    ax.xaxis.set_major_formatter(PercentFormatter(xmax=100))
+    ax.tick_params(axis="both", labelsize=11)
+    ax.set_axisbelow(True)
+    ax.xaxis.grid(True, which="major", linestyle="--", linewidth=0.75, alpha=0.32)
+    ax.yaxis.grid(True, which="major", linestyle="--", linewidth=0.75, alpha=0.32)
+
+    topic_means = method_df.groupby("topic_label")["pct_female"].mean()
+    y_positions = {label: i for i, label in enumerate(topic_order_labels)}
+    for label, mean_val in topic_means.items():
+        y = y_positions.get(str(label))
+        if y is not None and pd.notna(mean_val):
+            ax.plot([mean_val, mean_val], [y - 0.5, y + 0.5], linestyle="-", color="k", linewidth=1.7, clip_on=False)
+
+    if show_legend:
+        handles, labels = ax.get_legend_handles_labels()
+        mean_handle = Line2D([0], [0], color="k", linestyle="-", linewidth=1.7, label="Mean")
+        handles = list(handles) + [mean_handle]
+        legend_labels = [PANEL_DISPLAY_LABELS.get(lbl, lbl) for lbl in labels] + ["Mean"]
+        ax.legend(
+            handles=handles,
+            labels=legend_labels,
+            title="Main REF Panel",
+            fontsize=9,
+            frameon=True,
+            edgecolor="k",
+            facecolor=(1, 1, 1, 1),
+            framealpha=1.0,
+            loc="upper right",
+        )
+    else:
+        leg = ax.get_legend()
+        if leg is not None:
+            leg.remove()
+    sns.despine(ax=ax, top=True, right=True)
+
+
+def plot_supplementary_figure_one_thematic_panels(
+    df: pd.DataFrame,
+    topics: list[str],
+) -> tuple[plt.Figure, tuple[plt.Axes, plt.Axes, plt.Axes]]:
+    """
+    Supplementary Figure 1:
+      - a) Regex topic female-share by REF panel
+      - b) GPT-5.1 topic female-share by REF panel
+      - c) GPT-5-nano topic female-share by REF panel
+    """
+    _prep_pub_style()
+    topic_order = _topic_order_labels(df, topics, reference_prefix="llm54")
+    methods = [
+        ("regex", "a.", "Regex"),
+        ("llm51", "b.", "GPT-5.1"),
+        ("llmmini", "c.", "GPT-5-nano"),
+    ]
+
+    method_tables: dict[str, pd.DataFrame] = {
+        prefix: _build_topic_by_panel_for_method(df, topics, method_prefix=prefix)
+        for prefix, _, _ in methods
+    }
+    if any(tbl.empty for tbl in method_tables.values()):
+        empty = [prefix for prefix, tbl in method_tables.items() if tbl.empty]
+        raise ValueError(f"No topic-panel rows available for methods: {empty}")
+
+    max_val = max(float(tbl["pct_female"].max(skipna=True)) for tbl in method_tables.values())
+    x_max = max(60.0, np.ceil((max_val + 2.0) / 5.0) * 5.0)
+
+    fig, axes = plt.subplots(1, 3, figsize=(21, 7), sharey=True)
+    for i, (ax, (prefix, title, approach_label)) in enumerate(zip(axes, methods)):
+        _plot_single_topic_panel_bar(
+            ax,
+            method_tables[prefix],
+            topic_order_labels=topic_order,
+            title=title,
+            approach_label=approach_label,
+            x_max=x_max,
+            show_legend=(i == 2),
+            title_loc="left",
+        )
+    axes[1].set_ylabel("")
+    axes[2].set_ylabel("")
+    fig.tight_layout()
+    return fig, (axes[0], axes[1], axes[2])
 
 
 def discover_topics(df: pd.DataFrame) -> list[str]:
@@ -929,9 +1123,18 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
 
     parser.add_argument(
+        "--panel-bars-figure-stem",
+        type=str,
+        default="outputs/figures/supplementary_figure_1",
+        help=(
+            "Output stem for thematic bar-chart panels (Regex, GPT-5.1, GPT-5-nano) "
+            "styled like Figure 2a (writes pdf/svg/png)."
+        ),
+    )
+    parser.add_argument(
         "--comparison-figure-stem",
         type=str,
-        default="outputs/figures/supplementary_figure_2",
+        default="outputs/figures/supplementary_figure_4",
         help="Output stem for model comparison figure (writes pdf/svg/png).",
     )
     parser.add_argument(
@@ -1020,6 +1223,10 @@ def main(argv: list[str] | None = None) -> int:
     atomic_write_csv(pair_summary, pair_summary_output)
     atomic_write_csv(topic_positive, topic_positive_output)
 
+    fig_panel_bars, _ = plot_supplementary_figure_one_thematic_panels(df_cmp, topics)
+    save_figure_triplet(fig_panel_bars, Path(args.panel_bars_figure_stem))
+    plt.close(fig_panel_bars)
+
     fig_cmp, _ = plot_model_comparison_figure(pair_by_topic, pair_summary, df_cmp, topics)
     save_figure_triplet(fig_cmp, Path(args.comparison_figure_stem))
     plt.close(fig_cmp)
@@ -1028,6 +1235,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Wrote pairwise-by-topic table: {pair_by_topic_output}")
     print(f"Wrote pairwise summary:        {pair_summary_output}")
     print(f"Wrote topic positive rates:    {topic_positive_output}")
+    print(f"Wrote thematic panel bars:     {args.panel_bars_figure_stem} (pdf/svg/png)")
     print(f"Wrote comparison figure stem:  {args.comparison_figure_stem} (pdf/svg/png)")
 
     if args.sample_size > 0:

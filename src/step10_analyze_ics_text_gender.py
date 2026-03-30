@@ -292,7 +292,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--basename",
         type=str,
-        default="supplementary_figure_3",
+        default="supplementary_figure_5",
         help="Base filename for outputs.",
     )
     return parser.parse_args(argv)

@@ -12,10 +12,11 @@ try:  # pragma: no cover
     from .figure_one_helpers import resolve_enhanced_ref_data_path
     from .figure_two_llm import (
         load_llm_tables,
-        load_regex_tables,
         load_regression,
+        load_uoa_regression,
         plot_combined_figure,
-        plot_supplementary_figure_one,
+        plot_supplementary_figure_three,
+        plot_supplementary_figure_two,
         save_figure,
     )
     from .pipeline_config import load_config_and_paths
@@ -26,10 +27,11 @@ except ImportError:  # pragma: no cover
     from figure_one_helpers import resolve_enhanced_ref_data_path
     from figure_two_llm import (
         load_llm_tables,
-        load_regex_tables,
         load_regression,
+        load_uoa_regression,
         plot_combined_figure,
-        plot_supplementary_figure_one,
+        plot_supplementary_figure_three,
+        plot_supplementary_figure_two,
         save_figure,
     )
     from pipeline_config import load_config_and_paths
@@ -153,9 +155,12 @@ def main(argv: list[str] | None = None) -> int:
         "figure_pdf": fig_dir / "figure_two.pdf",
         "figure_png": fig_dir / "figure_two.png",
         "figure_svg": fig_dir / "figure_two.svg",
-        "supplementary_figure_1_pdf": fig_dir / "supplementary_figure_1.pdf",
-        "supplementary_figure_1_png": fig_dir / "supplementary_figure_1.png",
-        "supplementary_figure_1_svg": fig_dir / "supplementary_figure_1.svg",
+        "supplementary_figure_2_pdf": fig_dir / "supplementary_figure_2.pdf",
+        "supplementary_figure_2_png": fig_dir / "supplementary_figure_2.png",
+        "supplementary_figure_2_svg": fig_dir / "supplementary_figure_2.svg",
+        "supplementary_figure_3_pdf": fig_dir / "supplementary_figure_3.pdf",
+        "supplementary_figure_3_png": fig_dir / "supplementary_figure_3.png",
+        "supplementary_figure_3_svg": fig_dir / "supplementary_figure_3.svg",
     }
     try:
         openai_cfg = config.get("openai", {})
@@ -176,23 +181,34 @@ def main(argv: list[str] | None = None) -> int:
         print("[step06] Loading LLM summary tables...")
         _llm_overall, llm_by_panel = load_llm_tables(paths.data_dir)
         print(f"[step06] LLM panel rows: {len(llm_by_panel)}")
-        print("[step06] Loading regex summary tables...")
-        _regex_overall, regex_by_panel = load_regex_tables(paths.data_dir)
-        print(f"[step06] Regex panel rows: {len(regex_by_panel)}")
         print("[step06] Rendering Figure 2...")
         fig, _axes = plot_combined_figure(coef_df, var_order, llm_by_panel)
         print("[step06] Writing Figure 2 outputs (pdf/svg/png)...")
         save_figure(fig, fig_dir, basename="figure_two")
         plt.close(fig)
-        print("[step06] Rendering supplementary figure 1 (regex + GLM)...")
-        supp_fig, _supp_axes = plot_supplementary_figure_one(coef_df, var_order, regex_by_panel)
-        print("[step06] Writing supplementary figure 1 outputs (pdf/svg/png)...")
-        save_figure(supp_fig, fig_dir, basename="supplementary_figure_1")
+        print("[step06] Rendering supplementary figure 2 (GLM coefficients only)...")
+        supp_fig, _supp_ax = plot_supplementary_figure_two(coef_df, var_order)
+        print("[step06] Writing supplementary figure 2 outputs (pdf/svg/png)...")
+        save_figure(supp_fig, fig_dir, basename="supplementary_figure_2")
         plt.close(supp_fig)
+        print("[step06] Fitting UoA-based regressions for supplementary figure 3...")
+        uoa_coef_df, uoa_var_order, uoa_discipline_vars, uoa_label_overrides = load_uoa_regression(paths.data_dir)
+        print(f"[step06] UoA regression rows: {len(uoa_coef_df)}")
+        print("[step06] Rendering supplementary figure 3 (UoA controls; OLS + GLM)...")
+        supp3_fig, _supp3_axes = plot_supplementary_figure_three(
+            uoa_coef_df,
+            uoa_var_order,
+            discipline_vars=uoa_discipline_vars,
+            label_overrides=uoa_label_overrides,
+        )
+        print("[step06] Writing supplementary figure 3 outputs (pdf/svg/png)...")
+        save_figure(supp3_fig, fig_dir, basename="supplementary_figure_3")
+        plt.close(supp3_fig)
         row_counts = {
             "coef_rows": int(len(coef_df)),
             "llm_panel_rows": int(len(llm_by_panel)),
-            "regex_panel_rows": int(len(regex_by_panel)),
+            "uoa_coef_rows": int(len(uoa_coef_df)),
+            "uoa_discipline_terms": int(len(uoa_discipline_vars)),
             **llm_validation_counts,
         }
     except Exception as exc:  # noqa: BLE001
