@@ -165,12 +165,12 @@ fi
 
 if [[ "$MODE" == "offline" ]]; then
   ENH_PATH=""
-  if [[ -f "$DATA_DIR/gold/enhanced_ref_data.parquet" ]]; then
-    ENH_PATH="$DATA_DIR/gold/enhanced_ref_data.parquet"
-  elif [[ -f "$DATA_DIR/gold/enhanced_ref_data.csv" ]]; then
-    ENH_PATH="$DATA_DIR/gold/enhanced_ref_data.csv"
+  if [[ -f "$DATA_DIR/analysis/enhanced_ref_data.parquet" ]]; then
+    ENH_PATH="$DATA_DIR/analysis/enhanced_ref_data.parquet"
+  elif [[ -f "$DATA_DIR/analysis/enhanced_ref_data.csv" ]]; then
+    ENH_PATH="$DATA_DIR/analysis/enhanced_ref_data.csv"
   else
-    echo "Missing existing enhanced_ref_data in $DATA_DIR/gold (need parquet or csv)." >&2
+    echo "Missing existing enhanced_ref_data in $DATA_DIR/analysis (need parquet or csv)." >&2
     exit 1
   fi
 
