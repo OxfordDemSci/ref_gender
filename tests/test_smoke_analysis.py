@@ -76,12 +76,12 @@ class SmokeAnalysisTest(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
             data_root = root / "data"
-            (data_root / "gold").mkdir(parents=True, exist_ok=True)
+            (data_root / "analysis").mkdir(parents=True, exist_ok=True)
             (data_root / "manual" / "university_category").mkdir(parents=True, exist_ok=True)
             (root / "outputs" / "models").mkdir(parents=True, exist_ok=True)
 
-            enhanced_path = data_root / "gold" / "enhanced_ref_data.csv"
-            outputs_path = data_root / "gold" / "outputs_concat_with_positive_authors.csv"
+            enhanced_path = data_root / "analysis" / "enhanced_ref_data.csv"
+            outputs_path = data_root / "analysis" / "outputs_concat_with_positive_authors.csv"
             uniclass_path = data_root / "manual" / "university_category" / "ref_unique_institutions.csv"
 
             _make_enhanced_df().to_csv(enhanced_path, index=False)
@@ -105,4 +105,3 @@ class SmokeAnalysisTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

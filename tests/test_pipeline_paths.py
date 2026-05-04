@@ -6,17 +6,17 @@ from src.pipeline_paths import build_paths, resolve_enhanced_ref_data_path, reso
 
 
 class PipelinePathsTest(unittest.TestCase):
-    def test_resolve_prefers_gold_paths(self):
+    def test_resolve_prefers_analysis_paths(self):
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
             paths = build_paths(project_root=root)
-            (paths.gold_dir).mkdir(parents=True, exist_ok=True)
+            (paths.analysis_dir).mkdir(parents=True, exist_ok=True)
             (paths.legacy_final_dir).mkdir(parents=True, exist_ok=True)
-            gold = paths.gold_dir / "enhanced_ref_data.parquet"
+            analysis = paths.analysis_dir / "enhanced_ref_data.parquet"
             legacy = paths.legacy_final_dir / "enhanced_ref_data.csv"
-            gold.write_bytes(b"PAR1fake")
+            analysis.write_bytes(b"PAR1fake")
             legacy.write_text("a,b\n3,4\n", encoding="utf-8")
-            self.assertEqual(resolve_enhanced_ref_data_path(paths), gold)
+            self.assertEqual(resolve_enhanced_ref_data_path(paths), analysis)
 
     def test_resolve_outputs_falls_back_to_legacy(self):
         with TemporaryDirectory() as tmp:
