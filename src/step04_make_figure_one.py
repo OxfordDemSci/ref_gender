@@ -35,7 +35,7 @@ def main(argv: list[str] | None = None) -> int:
     ensure_core_dirs(paths)
 
     fig_dir = paths.outputs_dir / "figures"
-    wrangled_dir = paths.silver_dir / "wrangled"
+    wrangled_dir = paths.working_dir / "wrangled"
     legacy_wrangled_dir = paths.data_dir / "wrangled"
     fig_dir.mkdir(parents=True, exist_ok=True)
     wrangled_dir.mkdir(parents=True, exist_ok=True)

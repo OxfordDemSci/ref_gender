@@ -18,7 +18,7 @@ COLOR_OUTPUT_BLUE = '#0072B2'
 # Common paths (resolved relative to this file when available)
 THIS_DIR = Path(__file__).resolve().parent
 DEFAULT_DATA_ROOT = (THIS_DIR / '..' / 'data').resolve()
-DEFAULT_GOLD_DIR = DEFAULT_DATA_ROOT / 'gold'
+DEFAULT_ANALYSIS_DIR = DEFAULT_DATA_ROOT / 'analysis'
 DEFAULT_UNICLASS_PATH = DEFAULT_DATA_ROOT / 'manual' / 'university_category' / 'ref_unique_institutions.csv'
 DEFAULT_UOA_CODES_PATH = DEFAULT_DATA_ROOT / 'manual' / 'ref_acronyms' / 'ref2021_uoa_codes.xlsx'
 
@@ -35,8 +35,8 @@ def resolve_enhanced_ref_data_path(data_root: Path = DEFAULT_DATA_ROOT) -> Path:
     data_root = Path(data_root)
     return _resolve_first_existing(
         (
-            data_root / "gold" / "enhanced_ref_data.parquet",
-            data_root / "gold" / "enhanced_ref_data.csv",
+            data_root / "analysis" / "enhanced_ref_data.parquet",
+            data_root / "analysis" / "enhanced_ref_data.csv",
             data_root / "final" / "enhanced_ref_data.csv",
             data_root / "final" / "enhanced_ref_data.zip",
         ),
@@ -48,8 +48,8 @@ def resolve_outputs_concat_path(data_root: Path = DEFAULT_DATA_ROOT) -> Path:
     data_root = Path(data_root)
     return _resolve_first_existing(
         (
-            data_root / "gold" / "outputs_concat_with_positive_authors.parquet",
-            data_root / "gold" / "outputs_concat_with_positive_authors.csv",
+            data_root / "analysis" / "outputs_concat_with_positive_authors.parquet",
+            data_root / "analysis" / "outputs_concat_with_positive_authors.csv",
             data_root / "dimensions_outputs" / "outputs_concat_with_positive_authors.csv",
         ),
         label="outputs_concat_with_positive_authors",
