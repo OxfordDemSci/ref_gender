@@ -35,7 +35,7 @@ The repository operationalises this with:
 
 ### 2.1 Core scripts (analysis pipeline)
 - `src/step01_make_enhanced_data.py`
-  - Builds canonical enhanced ICS dataset in `data/gold/enhanced_ref_data.{parquet,csv}`.
+  - Builds canonical enhanced ICS dataset in `data/analysis/enhanced_ref_data.{parquet,csv}`.
   - Can run with or without LLM thematic classification.
   - Supports model/prompt cache backfilling in `data/openai/categories.csv`.
 - `src/step02_make_ref_staff.py`
@@ -43,7 +43,7 @@ The repository operationalises this with:
   - Writes outputs under `data/ics_staff_rows/`.
 - `src/step03_get_dimensions_research_outputs.py`
   - Builds output-level author-gender tables using Dimensions API (or existing local chunks/outputs in offline mode).
-  - Writes `outputs_concat_with_any_number_authors` and `outputs_concat_with_positive_authors` to `data/gold/`.
+  - Writes `outputs_concat_with_any_number_authors` and `outputs_concat_with_positive_authors` to `data/analysis/`.
 - `src/step04_make_figure_one.py`
   - Rebuilds Figure 1.
 - `src/step05_build_regression_models.py`
@@ -65,9 +65,9 @@ The repository operationalises this with:
 - `src/pipeline_*.py` (config, paths, I/O, schema, drift checks)
 
 ### 2.3 Data and outputs
-- `data/bronze/` raw/downloaded inputs
-- `data/silver/` intermediate cleaned tables
-- `data/gold/` canonical analysis-ready tables
+- `data/source/` downloaded source inputs
+- `data/working/` intermediate cleaned and wrangled tables
+- `data/analysis/` canonical analysis-ready tables
 - `outputs/figures/` publication figures
 - `outputs/tables/` publication and diagnostic tables
 - `outputs/models/` fitted model artifacts
@@ -75,7 +75,7 @@ The repository operationalises this with:
 ## 3. Data Provenance
 
 ### 3.1 REF inputs
-The pipeline consumes REF 2021 public workbooks (environment/results/ICS/ICS tags/outputs) via step01 download routines, with local persistence under `data/bronze/` (mirrored to legacy paths for compatibility).
+The pipeline consumes REF 2021 public workbooks (environment/results/ICS/ICS tags/outputs) via step01 download routines, with local persistence under `data/source/` (mirrored to legacy paths for compatibility).
 
 ### 3.2 ICS PDF text
 Step02 downloads ICS PDFs from the REF website and extracts text/staff blocks.
@@ -127,9 +127,9 @@ Key defaults include:
 
 | Step | Script | External calls by default | Primary outputs |
 |---|---|---|---|
-| 01 | `step01_make_enhanced_data.py` | REF workbook downloads; OpenAI (if `--with-llm`) | `data/gold/enhanced_ref_data.*`, `data/openai/categories.csv` |
+| 01 | `step01_make_enhanced_data.py` | REF workbook downloads; OpenAI (if `--with-llm`) | `data/analysis/enhanced_ref_data.*`, `data/openai/categories.csv` |
 | 02 | `step02_make_ref_staff.py` | ICS PDF downloads; OpenAI (if `--with-llm`) | `data/ics_staff_rows/*.csv` |
-| 03 | `step03_get_dimensions_research_outputs.py` | Dimensions API (unless `--skip-api`) | `data/gold/outputs_concat_*.{parquet,csv}` |
+| 03 | `step03_get_dimensions_research_outputs.py` | Dimensions API (unless `--skip-api`) | `data/analysis/outputs_concat_*.{parquet,csv}` |
 | 04 | `step04_make_figure_one.py` | none | `outputs/figures/figure_one.{pdf,svg,png}` |
 | 05 | `step05_build_regression_models.py` | none | `outputs/models/regression_results.pkl` |
 | 06 | `step06_make_figure_two.py` | none | `outputs/figures/figure_two.*`, `outputs/figures/supplementary_figure_2.*` |
@@ -159,7 +159,7 @@ python -m src.step10_analyze_ics_text_gender
 ### 6.2 Full rerun with no new API calls (local snapshot only)
 Use when journal reproducibility requires regeneration from frozen local data/cache:
 ```bash
-cd ~/Dropbox/ics_work/ref_gender && REF_SKIP_MANIFEST=1 PYTHONUNBUFFERED=1 bash -lc 'set -euo pipefail; ENH_PATH="$( [ -f data/gold/enhanced_ref_data.parquet ] && echo data/gold/enhanced_ref_data.parquet || { [ -f data/gold/enhanced_ref_data.csv ] && echo data/gold/enhanced_ref_data.csv || true; } )"; [ -n "$ENH_PATH" ] || { echo "Missing existing enhanced_ref_data in data/gold"; exit 1; }; printf "REF impact case study identifier\n" > /tmp/ref_gender_empty_ids.csv; python -m src.step01_make_enhanced_data --with-llm --output "$ENH_PATH"; python -m src.step02_make_ref_staff --without-llm --input /tmp/ref_gender_empty_ids.csv --out-dir /tmp/ref_gender_step02_noapi; python -m src.step03_get_dimensions_research_outputs --skip-api; python -m src.step04_make_figure_one; python -m src.step05_build_regression_models; python -m src.step06_make_figure_two; python -m src.step07_make_table_one; python -m src.step08_build_statistics; python -m src.step09_evaluate_thematic_indicators --model-mini gpt-5-nano --prompt-mini v2 --model-51 gpt-5.1 --prompt-51 v2 --model-54 gpt-5.4 --prompt-54 v2; python -m src.step10_analyze_ics_text_gender'
+cd ~/Dropbox/ics_work/ref_gender && REF_SKIP_MANIFEST=1 PYTHONUNBUFFERED=1 bash -lc 'set -euo pipefail; ENH_PATH="$( [ -f data/analysis/enhanced_ref_data.parquet ] && echo data/analysis/enhanced_ref_data.parquet || { [ -f data/analysis/enhanced_ref_data.csv ] && echo data/analysis/enhanced_ref_data.csv || true; } )"; [ -n "$ENH_PATH" ] || { echo "Missing existing enhanced_ref_data in data/analysis"; exit 1; }; printf "REF impact case study identifier\n" > /tmp/ref_gender_empty_ids.csv; python -m src.step01_make_enhanced_data --with-llm --output "$ENH_PATH"; python -m src.step02_make_ref_staff --without-llm --input /tmp/ref_gender_empty_ids.csv --out-dir /tmp/ref_gender_step02_noapi; python -m src.step03_get_dimensions_research_outputs --skip-api; python -m src.step04_make_figure_one; python -m src.step05_build_regression_models; python -m src.step06_make_figure_two; python -m src.step07_make_table_one; python -m src.step08_build_statistics; python -m src.step09_evaluate_thematic_indicators --model-mini gpt-5-nano --prompt-mini v2 --model-51 gpt-5.1 --prompt-51 v2 --model-54 gpt-5.4 --prompt-54 v2; python -m src.step10_analyze_ics_text_gender'
 ```
 
 Notes:
@@ -168,7 +168,7 @@ Notes:
 - In `step03 --skip-api`, existing-output contract mismatches are downgraded to warnings to allow offline continuation.
 
 ### 6.3 Downstream-only rerun (fast)
-If `data/gold/` is already current:
+If `data/analysis/` is already current:
 ```bash
 python -m src.step04_make_figure_one
 python -m src.step05_build_regression_models
