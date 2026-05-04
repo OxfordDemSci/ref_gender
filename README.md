@@ -79,6 +79,8 @@ The pipeline consumes REF 2021 public workbooks (environment/results/ICS/ICS tag
 
 ### 3.2 ICS PDF text
 Step02 downloads ICS PDFs from the REF website and extracts text/staff blocks.
+It now supports persistent local PDF caching (`data/cache/ref_pdfs/` by default) and writes an extraction audit table at:
+- `data/ics_staff_rows/ref_staff_extraction_audit.csv`
 
 ### 3.3 Dimensions metadata
 Step03 queries Dimensions publication metadata (unless `--skip-api`), and enriches output records with author-level gender counts.
@@ -119,6 +121,7 @@ Key defaults include:
 - OpenAI prompt version: `v2`
 - OpenAI service tier: `flex`
 - thematic batch size: `12`
+- step02 PDF cache: enabled, directory `data/cache/ref_pdfs/`
 
 ## 5. Step-by-Step Pipeline Map
 
