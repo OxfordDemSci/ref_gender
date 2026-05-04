@@ -38,6 +38,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "key_env_var": "OPENAI_API_KEY",
         "key_file": "keys/OPENAI_API_KEY",
     },
+    "step02": {
+        "pdf_cache_enabled": True,
+        "pdf_cache_dir": "cache/ref_pdfs",
+    },
     "dimensions": {
         "enabled": True,
         "key_env_var": "DIMENSIONS_API_KEY",

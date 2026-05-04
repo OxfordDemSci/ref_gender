@@ -11,9 +11,9 @@ class PipelinePaths:
     data_dir: Path
     outputs_dir: Path
     keys_dir: Path
-    bronze_dir: Path
-    silver_dir: Path
-    gold_dir: Path
+    source_dir: Path
+    working_dir: Path
+    analysis_dir: Path
     legacy_raw_dir: Path
     legacy_edit_dir: Path
     legacy_final_dir: Path
@@ -34,9 +34,9 @@ def build_paths(
     outputs = (root / outputs_dir).resolve()
     keys = (root / keys_dir).resolve()
 
-    bronze = data / "bronze"
-    silver = data / "silver"
-    gold = data / "gold"
+    source = data / "source"
+    working = data / "working"
+    analysis = data / "analysis"
 
     manifests_dir = outputs / "manifests"
 
@@ -45,9 +45,9 @@ def build_paths(
         data_dir=data,
         outputs_dir=outputs,
         keys_dir=keys,
-        bronze_dir=bronze,
-        silver_dir=silver,
-        gold_dir=gold,
+        source_dir=source,
+        working_dir=working,
+        analysis_dir=analysis,
         legacy_raw_dir=data / "raw",
         legacy_edit_dir=data / "edit",
         legacy_final_dir=data / "final",
@@ -63,9 +63,9 @@ def ensure_core_dirs(paths: PipelinePaths) -> None:
         paths.data_dir,
         paths.outputs_dir,
         paths.keys_dir,
-        paths.bronze_dir,
-        paths.silver_dir,
-        paths.gold_dir,
+        paths.source_dir,
+        paths.working_dir,
+        paths.analysis_dir,
         paths.legacy_raw_dir,
         paths.legacy_edit_dir,
         paths.legacy_final_dir,
@@ -83,13 +83,13 @@ def resolve_first_existing(candidates: Sequence[Path], label: str) -> Path:
 
 
 def resolve_enhanced_ref_data_path(paths: PipelinePaths, must_exist: bool = True) -> Path:
-    preferred = paths.gold_dir / "enhanced_ref_data.parquet"
+    preferred = paths.analysis_dir / "enhanced_ref_data.parquet"
     if not must_exist:
         return preferred
     return resolve_first_existing(
         (
             preferred,
-            paths.gold_dir / "enhanced_ref_data.csv",
+            paths.analysis_dir / "enhanced_ref_data.csv",
             paths.legacy_final_dir / "enhanced_ref_data.csv",
             paths.legacy_final_dir / "enhanced_ref_data.zip",
         ),
@@ -98,13 +98,13 @@ def resolve_enhanced_ref_data_path(paths: PipelinePaths, must_exist: bool = True
 
 
 def resolve_outputs_concat_path(paths: PipelinePaths, must_exist: bool = True) -> Path:
-    preferred = paths.gold_dir / "outputs_concat_with_positive_authors.parquet"
+    preferred = paths.analysis_dir / "outputs_concat_with_positive_authors.parquet"
     if not must_exist:
         return preferred
     return resolve_first_existing(
         (
             preferred,
-            paths.gold_dir / "outputs_concat_with_positive_authors.csv",
+            paths.analysis_dir / "outputs_concat_with_positive_authors.csv",
             paths.legacy_dimensions_dir / "outputs_concat_with_positive_authors.csv",
         ),
         label="outputs_concat_with_positive_authors",
