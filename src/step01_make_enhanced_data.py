@@ -48,9 +48,9 @@ def log_row_count(func):
     return wrapper
 
 
-def mirror_legacy_raw_to_bronze(raw_path: Path, legacy_raw_path: Path) -> None:
+def mirror_legacy_raw_to_source(raw_path: Path, legacy_raw_path: Path) -> None:
     """
-    Copy legacy raw files into the bronze layer when bronze is empty.
+    Copy legacy raw files into the source-data directory when source is empty.
     """
     raw_path = Path(raw_path)
     legacy_raw_path = Path(legacy_raw_path)
@@ -62,10 +62,10 @@ def mirror_legacy_raw_to_bronze(raw_path: Path, legacy_raw_path: Path) -> None:
         "raw_ref_ics_tags_data.xlsx",
         "raw_ref_outputs_data.xlsx",
     ):
-        bronze_file = raw_path / name
+        source_file = raw_path / name
         legacy_file = legacy_raw_path / name
-        if not bronze_file.exists() and legacy_file.exists():
-            shutil.copy2(legacy_file, bronze_file)
+        if not source_file.exists() and legacy_file.exists():
+            shutil.copy2(legacy_file, source_file)
 
 
 def get_impact_data(raw_path: Path, session, timeout_seconds: int) -> None:
@@ -251,13 +251,13 @@ def clean_dep_level(raw_path: Path, edit_path: Path) -> None:
 
 def get_paths(paths: PipelinePaths):
     """
-    Build canonical paths while preserving legacy compatibility directories.
+    Build project data paths while preserving legacy compatibility directories.
     """
-    raw_path = paths.bronze_dir
-    edit_path = paths.silver_dir
+    raw_path = paths.source_dir
+    edit_path = paths.working_dir
     sup_path = paths.data_dir / "supplementary"
     manual_path = paths.manual_dir
-    final_path = paths.gold_dir
+    final_path = paths.analysis_dir
     topic_path = paths.data_dir / "reassignments"
     dim_path = paths.data_dir / "dimensions_returns"
     openalex_path = paths.data_dir / "openalex_returns"
@@ -1175,11 +1175,11 @@ def main(argv: list[str] | None = None) -> int:
     ) = get_paths(paths)
     for p in (raw_path, edit_path, final_path, ics_staff_rows_path, ics_grants_path, manual_path):
         Path(p).mkdir(parents=True, exist_ok=True)
-    mirror_legacy_raw_to_bronze(raw_path, paths.legacy_raw_dir)
+    mirror_legacy_raw_to_source(raw_path, paths.legacy_raw_dir)
 
     output_path = Path(args.output).resolve() if args.output else final_path / "enhanced_ref_data.parquet"
-    gold_parquet_path = final_path / "enhanced_ref_data.parquet"
-    gold_csv_path = final_path / "enhanced_ref_data.csv"
+    analysis_parquet_path = final_path / "enhanced_ref_data.parquet"
+    analysis_csv_path = final_path / "enhanced_ref_data.csv"
     legacy_csv_path = paths.legacy_final_dir / "enhanced_ref_data.csv"
     legacy_zip_path = paths.legacy_final_dir / "enhanced_ref_data.zip"
 
@@ -1210,8 +1210,8 @@ def main(argv: list[str] | None = None) -> int:
         "university_class": Path(manual_path) / "university_category" / "ref_unique_institutions.csv",
     }
     output_paths = {
-        "enhanced_gold_parquet": gold_parquet_path,
-        "enhanced_gold_csv": gold_csv_path,
+        "enhanced_analysis_parquet": analysis_parquet_path,
+        "enhanced_analysis_csv": analysis_csv_path,
         "enhanced_legacy_csv": legacy_csv_path,
         "enhanced_legacy_zip": legacy_zip_path,
         "enhanced_clean_final_csv": paths.legacy_final_dir / "enhanced_ref_data_clean_final.csv",
@@ -1341,8 +1341,8 @@ def main(argv: list[str] | None = None) -> int:
         apply_enhanced_drift_checks(df, config.get("drift_checks", {}))
         row_counts = {"enhanced_ref_data_rows": int(len(df))}
 
-        atomic_write_parquet(df, gold_parquet_path)
-        atomic_write_csv(df, gold_csv_path)
+        atomic_write_parquet(df, analysis_parquet_path)
+        atomic_write_csv(df, analysis_csv_path)
         atomic_write_csv(df, legacy_csv_path)
         df.to_csv(legacy_zip_path, index=False, compression=dict(method="zip", archive_name="enhanced_ref_data.csv"))
         final_exports = write_final_clean_exports(df, paths.legacy_final_dir)
@@ -1350,7 +1350,7 @@ def main(argv: list[str] | None = None) -> int:
             atomic_write_csv(df, output_path)
         elif output_path.suffix.lower() == ".parquet":
             atomic_write_parquet(df, output_path)
-        elif output_path != gold_parquet_path:
+        elif output_path != analysis_parquet_path:
             # default to CSV for unknown extension requests
             atomic_write_csv(df, output_path)
         print(f"Saved enhanced dataset to: {output_path}")

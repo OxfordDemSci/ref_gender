@@ -100,34 +100,35 @@ def _norm_text(s: str) -> str:
 
 # Header punctuation set
 _PUNCT = r"[:\-–—\uFF1A]"
+_FIELD_PREFIX = r"(?:\d+\s*[A-Za-z]?\s*)?"
 
 # -------- Strict header variants (robust but expect punctuation) --------
-PAT_NAMES_STRICT   = re.compile(rf"(?mi)^\s*Name(?:\s*\(\s*s\s*\))?s?\s*{_PUNCT}")
+PAT_NAMES_STRICT   = re.compile(rf"(?mi)^\s*{_FIELD_PREFIX}Name(?:\s*\(\s*s\s*\))?s?\s*{_PUNCT}")
 PAT_ROLES_STRICT   = re.compile(
-    rf"(?mi)^\s*(?:Role|Position|Job\s*title)(?:\s*\(\s*s\s*\))?s?"
+    rf"(?mi)^\s*{_FIELD_PREFIX}(?:Role|Position|Job\s*title)(?:\s*\(\s*s\s*\))?s?"
     rf"(?:\s*\(\s*e\.?\s*g\.?\s*job\s*title\s*\))?\s*{_PUNCT}"
 )
 PAT_PERIODS_STRICT = re.compile(
-    rf"(?mi)^\s*(?:Period|Date|Dates|Employment\s*period)(?:\s*\(\s*s\s*\))?s?"
+    rf"(?mi)^\s*{_FIELD_PREFIX}(?:Period|Date|Dates|Employment\s*period)(?:\s*\(\s*s\s*\))?s?"
     rf"(?:\s+(?:employed|of\s*employment|in\s*post))?"
     rf"(?:[^\n]{0,200})?\s*{_PUNCT}"
 )
 
 # -------- Flex header variants (tolerate missing punctuation / brackets) --------
-PAT_NAMES_FLEX   = re.compile(r"(?mi)^\s*Name(?:\s*\[\s*s\s*\])?s?\b\s*:?")
-PAT_ROLES_FLEX   = re.compile(r"(?mi)^\s*(?:Role|Position|Job\s*title)(?:\s*\[\s*s\s*\])?s?\b\s*:?")
+PAT_NAMES_FLEX   = re.compile(rf"(?mi)^\s*{_FIELD_PREFIX}Name(?:\s*\[\s*s\s*\])?s?\b\s*:?")
+PAT_ROLES_FLEX   = re.compile(rf"(?mi)^\s*{_FIELD_PREFIX}(?:Role|Position|Job\s*title)(?:\s*\[\s*s\s*\])?s?\b\s*:?")
 PAT_PERIODS_FLEX = re.compile(
-    r"(?mi)^\s*(?:Period|Date|Dates|Employment\s*period)(?:\s*\[\s*s\s*\])?s?"
+    rf"(?mi)^\s*{_FIELD_PREFIX}(?:Period|Date|Dates|Employment\s*period)(?:\s*\[\s*s\s*\])?s?"
     r"(?:\s+(?:employed|of\s*employment|in\s*post))?\b\s*:?"
 )
 
 # Next-section sentinels that terminate the staff block
 NEXT_SECTION_MARKERS = [
-    re.compile(r"(?mi)^\s*Period\s*when\s*the\s*claimed\s*impact\s*occurred(?:\s*[:\-–—])?"),
-    re.compile(r"(?mi)^\s*\d+\.\s*Summary\s*of\s*the\s*impact"),
-    re.compile(r"(?mi)^\s*\d+\.\s*Underpinning\s*research"),
-    re.compile(r"(?mi)^\s*\d+\.\s*References\s*to\s*the\s*research"),
-    re.compile(r"(?mi)^\s*\d+\.\s*Details\s*of\s*the\s*impact"),
+    re.compile(rf"(?mi)^\s*{_FIELD_PREFIX}Period\s*when\s*the\s*claimed\s*impact\s*occurred(?:\s*[:\-–—])?"),
+    re.compile(rf"(?mi)^\s*{_FIELD_PREFIX}\d+\.\s*Summary\s*of\s*the\s*impact"),
+    re.compile(rf"(?mi)^\s*{_FIELD_PREFIX}\d+\.\s*Underpinning\s*research"),
+    re.compile(rf"(?mi)^\s*{_FIELD_PREFIX}\d+\.\s*References\s*to\s*the\s*research"),
+    re.compile(rf"(?mi)^\s*{_FIELD_PREFIX}\d+\.\s*Details\s*of\s*the\s*impact"),
     re.compile(r"(?mi)^\s*Sources\s*to\s*corroborate"),
     re.compile(r"(?mi)^\s*Further\s*information"),
 ]
@@ -250,6 +251,46 @@ def extract_given_name(name_no_titles: str) -> str:
             continue
         return t
     return toks[0] if toks else ""
+
+
+def _safe_case_id_filename(case_id: str) -> str:
+    return re.sub(r"[^A-Za-z0-9._-]+", "_", case_id.strip())
+
+
+def _get_pdf_bytes(
+    case_id: str,
+    target_url: str,
+    session: requests.Session,
+    timeout_seconds: int,
+    pdf_cache_dir: Path | None,
+) -> tuple[bytes | None, str]:
+    """
+    Return (pdf_bytes, source) where source ∈ {'cache','download','failed'}.
+    """
+    cache_path = None
+    if pdf_cache_dir is not None:
+        cache_path = pdf_cache_dir / f"{_safe_case_id_filename(case_id)}.pdf"
+        if cache_path.exists() and cache_path.stat().st_size > 0:
+            try:
+                return cache_path.read_bytes(), "cache"
+            except Exception:
+                pass
+
+    try:
+        r = session.get(target_url, timeout=timeout_seconds)
+        r.raise_for_status()
+        pdf_bytes = r.content
+    except Exception:
+        return None, "failed"
+
+    if cache_path is not None:
+        try:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            cache_path.write_bytes(pdf_bytes)
+        except Exception:
+            # Caching failure should never fail extraction.
+            pass
+    return pdf_bytes, "download"
 
 # =========================
 # 4) LLM PARSING
@@ -508,6 +549,7 @@ def get_staff_rows(
     sleep_between_calls=0.03,
     service_mode: str = "flex",  # "strict" | "flex" | "auto"
     llm_batch_size: int = 8,
+    pdf_cache_dir: Path | None = None,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     End-to-end pipeline.
@@ -568,17 +610,51 @@ def get_staff_rows(
         atomic_write_csv(ref_case_level, out_dir / "ref_case_level.csv")
         return df_staff_rows, ref_case_level
 
+    if pdf_cache_dir is not None:
+        pdf_cache_dir = Path(pdf_cache_dir)
+        pdf_cache_dir.mkdir(parents=True, exist_ok=True)
+
+    prior_text_by_id: Dict[str, str] = {}
+    prior_master_path = out_dir / "ref_text_and_staff_blocks.csv"
+    if prior_master_path.exists():
+        try:
+            prior_master = pd.read_csv(prior_master_path, usecols=["REF impact case study identifier", "Extracted Text"])
+            for _, row in prior_master.iterrows():
+                cid = str(row["REF impact case study identifier"]).strip()
+                txt = row["Extracted Text"]
+                if isinstance(txt, str) and txt.strip():
+                    prior_text_by_id[cid] = txt
+        except Exception:
+            prior_text_by_id = {}
+
     # 1) Download & extract PDFs
     all_texts: Dict[str, Optional[str]] = {}
+    pdf_sources: Dict[str, str] = {}
     for ics in tqdm(ids, desc="Downloading & extracting PDFs"):
         target = f"{base_url}/{ics}/pdf"
         try:
-            r = session.get(target, timeout=timeout_seconds)
-            r.raise_for_status()
-            text = extract_text_safe(r.content)
+            pdf_bytes, src = _get_pdf_bytes(
+                case_id=ics,
+                target_url=target,
+                session=session,
+                timeout_seconds=timeout_seconds,
+                pdf_cache_dir=pdf_cache_dir,
+            )
+            if pdf_bytes is None:
+                fallback_text = prior_text_by_id.get(ics)
+                if isinstance(fallback_text, str) and fallback_text.strip():
+                    all_texts[ics] = fallback_text
+                    pdf_sources[ics] = "previous_text"
+                else:
+                    all_texts[ics] = None
+                    pdf_sources[ics] = src
+                continue
+            text = extract_text_safe(pdf_bytes)
             all_texts[ics] = text
+            pdf_sources[ics] = src
         except Exception:
             all_texts[ics] = None
+            pdf_sources[ics] = "failed"
 
     # 2) Build a single master file with extracted text + staff block + extraction status
     master_rows: List[Tuple[str, Optional[str], Optional[str], str]] = []
@@ -749,6 +825,23 @@ def get_staff_rows(
 
     atomic_write_csv(ref_case_level, out_dir / "ref_case_level.csv")
 
+    # 5) Case-level extraction audit for diagnostics
+    master_audit = df_master[["REF impact case study identifier", "Extracted Text", "staff_block", "extraction_status"]].copy()
+    master_audit["has_extracted_text"] = ~(
+        master_audit["Extracted Text"].isna() | (master_audit["Extracted Text"].astype(str).str.strip() == "")
+    )
+    master_audit["has_staff_block"] = ~(
+        master_audit["staff_block"].isna() | (master_audit["staff_block"].astype(str).str.strip() == "")
+    )
+    master_audit["pdf_source"] = master_audit["REF impact case study identifier"].astype(str).map(
+        lambda cid: pdf_sources.get(cid, "unknown")
+    )
+
+    case_audit = ref_case_level[["REF impact case study identifier", "number_people"]].copy()
+    case_audit["has_people"] = case_audit["number_people"].fillna(0).astype(float) > 0
+    audit = master_audit.merge(case_audit, on="REF impact case study identifier", how="left")
+    atomic_write_csv(audit, out_dir / "ref_staff_extraction_audit.csv")
+
     return df_staff_rows, ref_case_level
 
 # =========================
@@ -763,6 +856,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--out-dir", type=str, default=None, help="Output directory for extracted staff files.")
     parser.add_argument("--service-mode", type=str, default="flex", choices=["strict", "flex", "auto"])
     parser.add_argument("--llm-batch-size", type=int, default=None, help="Number of ICS blocks per LLM API call.")
+    parser.add_argument("--pdf-cache-dir", type=str, default=None, help="Directory for cached REF ICS PDFs.")
+    parser.add_argument("--no-pdf-cache", action="store_true", help="Disable on-disk PDF caching.")
     parser.add_argument("--with-llm", action="store_true", help="Force-enable LLM extraction.")
     parser.add_argument("--without-llm", action="store_true", help="Disable LLM extraction.")
     return parser.parse_args(argv)
@@ -774,10 +869,10 @@ def main(argv: list[str] | None = None) -> int:
     config, paths = load_config_and_paths(config_path=Path(args.config) if args.config else None, project_root=project_root)
     ensure_core_dirs(paths)
 
-    input_path = Path(args.input).resolve() if args.input else (paths.gold_dir / "enhanced_ref_data.csv")
+    input_path = Path(args.input).resolve() if args.input else (paths.analysis_dir / "enhanced_ref_data.csv")
     if not input_path.exists():
         # Fallback to the raw ICS workbook so this step can run from scratch.
-        input_path = paths.bronze_dir / "raw_ref_ics_data.xlsx"
+        input_path = paths.source_dir / "raw_ref_ics_data.xlsx"
     out_dir = Path(args.out_dir).resolve() if args.out_dir else (paths.data_dir / "ics_staff_rows")
 
     openai_cfg = config.get("openai", {})
@@ -816,6 +911,7 @@ def main(argv: list[str] | None = None) -> int:
         "master": out_dir / "ref_text_and_staff_blocks.csv",
         "staff_rows": out_dir / "ref_staff_rows.csv",
         "case_level": out_dir / "ref_case_level.csv",
+        "audit": out_dir / "ref_staff_extraction_audit.csv",
     }
 
     try:
@@ -830,6 +926,18 @@ def main(argv: list[str] | None = None) -> int:
         if llm_enabled and str(openai_cfg.get("service_tier", "flex")).lower() != "flex":
             print("[step02] Overriding configured service_tier to 'flex' for staff extraction.")
 
+        step02_cfg = config.get("step02", {})
+        cache_enabled = bool(step02_cfg.get("pdf_cache_enabled", True))
+        if args.no_pdf_cache:
+            cache_enabled = False
+        if args.pdf_cache_dir:
+            pdf_cache_dir = Path(args.pdf_cache_dir).resolve()
+        else:
+            pdf_cache_rel = str(step02_cfg.get("pdf_cache_dir", "cache/ref_pdfs"))
+            pdf_cache_dir = (paths.data_dir / pdf_cache_rel).resolve()
+        if not cache_enabled:
+            pdf_cache_dir = None
+
         rows, cases = get_staff_rows(
             input_data_path=input_path,
             out_dir=out_dir,
@@ -841,6 +949,7 @@ def main(argv: list[str] | None = None) -> int:
             timeout_seconds=timeout_seconds,
             service_mode=args.service_mode,
             llm_batch_size=llm_batch_size,
+            pdf_cache_dir=pdf_cache_dir,
         )
         row_counts = {"staff_rows": int(len(rows)), "case_level_rows": int(len(cases))}
         print(f"Saved staff rows: {len(rows)}; case-level rows: {len(cases)}")
@@ -863,6 +972,8 @@ def main(argv: list[str] | None = None) -> int:
                 "service_tier": service_tier if 'service_tier' in locals() else str(openai_cfg.get("service_tier", "flex")),
                 "llm_batch_size": llm_batch_size if 'llm_batch_size' in locals() else None,
                 "input_path": str(input_path),
+                "pdf_cache_enabled": cache_enabled if 'cache_enabled' in locals() else None,
+                "pdf_cache_dir": str(pdf_cache_dir) if 'pdf_cache_dir' in locals() and pdf_cache_dir is not None else None,
             },
             input_paths=input_paths,
             output_paths=output_paths,
