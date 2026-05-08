@@ -14,12 +14,14 @@ Requires:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import io
 import os
 import re
 import json
 import time
 import logging
+import random
 from datetime import datetime, timezone
 from pathlib import Path
 import requests
@@ -29,11 +31,13 @@ from tqdm import tqdm
 from openai import OpenAI
 
 try:  # pragma: no cover
+    from .openai_batch import OpenAIBatchPending, create_or_retrieve_batch, read_jsonl
     from .pipeline_config import load_config_and_paths
     from .pipeline_io import atomic_write_csv, build_retry_session, read_secret
     from .pipeline_manifest import append_manifest_row
     from .pipeline_paths import ensure_core_dirs
 except ImportError:  # pragma: no cover
+    from openai_batch import OpenAIBatchPending, create_or_retrieve_batch, read_jsonl
     from pipeline_config import load_config_and_paths
     from pipeline_io import atomic_write_csv, build_retry_session, read_secret
     from pipeline_manifest import append_manifest_row
@@ -76,10 +80,28 @@ def _extract_text_pymupdf(pdf_bytes: bytes) -> str:
     return (text or "").strip()
 
 def extract_text_safe(pdf_bytes: bytes) -> str:
+    candidates: list[str] = []
     try:
-        return _extract_text_pymupdf(pdf_bytes)
+        candidates.append(_extract_text_pymupdf(pdf_bytes))
     except Exception:
-        return _extract_text_pdfminer(pdf_bytes)
+        pass
+    try:
+        candidates.append(_extract_text_pdfminer(pdf_bytes))
+    except Exception:
+        pass
+    candidates = [c.strip() for c in candidates if isinstance(c, str) and c.strip()]
+    if not candidates:
+        return ""
+
+    def _candidate_score(candidate: str) -> tuple[int, int]:
+        try:
+            block, status = isolate_staff_names_block_with_status(candidate, service_mode="flex")
+            has_staff_signal = int(bool(block) and status != "none")
+        except Exception:
+            has_staff_signal = 0
+        return has_staff_signal, len(candidate)
+
+    return max(candidates, key=_candidate_score)
 
 # =========================
 # 2) STAFF BLOCK ISOLATION
@@ -122,6 +144,25 @@ PAT_PERIODS_FLEX = re.compile(
     r"(?:\s+(?:employed|of\s*employment|in\s*post))?\b\s*:?"
 )
 
+PAT_STAFF_SECTION = re.compile(
+    rf"(?mi)^\s*{_FIELD_PREFIX}Details\s+of\s+staff\s+conducting\s+the\s+underpinning\s+research"
+    rf"(?:\s+from\s+the\s+submitting\s+unit)?\s*{_PUNCT}?"
+)
+PAT_AUTHOR_STRICT = re.compile(rf"(?mi)^\s*{_FIELD_PREFIX}Author(?:\s*\(\s*s\s*\))?s?\s*{_PUNCT}")
+PAT_AUTHOR_FLEX = re.compile(rf"(?mi)^\s*{_FIELD_PREFIX}Author(?:\s*[\(\[]\s*s\s*[\)\]])?s?\b\s*:?")
+
+PAT_NAMES_HEADER = re.compile(rf"(?mi)^\s*{_FIELD_PREFIX}Name(?:\s*[\(\[]\s*s\s*[\)\]])?s?\s*{_PUNCT}?")
+PAT_AUTHOR_HEADER = re.compile(rf"(?mi)^\s*{_FIELD_PREFIX}Author(?:\s*[\(\[]\s*s\s*[\)\]])?s?\s*{_PUNCT}?")
+PAT_ROLES_HEADER = re.compile(
+    rf"(?mi)^\s*{_FIELD_PREFIX}(?:Role|Position|Job\s*title)(?:\s*[\(\[]\s*s\s*[\)\]])?s?"
+    rf"(?:\s*\(\s*e\.?\s*g\.?\s*job\s*title\s*\))?\s*{_PUNCT}?"
+)
+PAT_PERIODS_HEADER = re.compile(
+    rf"(?mi)^\s*{_FIELD_PREFIX}(?:Period|Date|Dates|Employment\s*period)(?:\s*[\(\[]\s*s\s*[\)\]])?s?"
+    rf"(?:\s+(?:employed|of\s*employment|in\s*post))?"
+    rf"(?:[^\n]{{0,200}})?\s*{_PUNCT}?"
+)
+
 # Next-section sentinels that terminate the staff block
 NEXT_SECTION_MARKERS = [
     re.compile(rf"(?mi)^\s*{_FIELD_PREFIX}Period\s*when\s*the\s*claimed\s*impact\s*occurred(?:\s*[:\-–—])?"),
@@ -145,12 +186,15 @@ def _first_hit(text: str, patterns: List[re.Pattern], pos: int = 0) -> Optional[
 
 def _canonicalise_headers(block: str) -> str:
     """Rewrite header variants to canonical labels for downstream stability."""
-    out = PAT_NAMES_STRICT.sub("Name(s):", block)
-    out = PAT_NAMES_FLEX.sub("Name(s):", out)
-    out = PAT_ROLES_STRICT.sub("Role(s):", out)
-    out = PAT_ROLES_FLEX.sub("Role(s):", out)
-    out = PAT_PERIODS_STRICT.sub("Period(s) employed by submitting HEI:", out)
-    out = PAT_PERIODS_FLEX.sub("Period(s) employed by submitting HEI:", out)
+    out = PAT_AUTHOR_HEADER.sub("Name(s):\n", block)
+    out = PAT_NAMES_HEADER.sub("Name(s):\n", out)
+    out = PAT_ROLES_HEADER.sub("Role(s):\n", out)
+    out = PAT_PERIODS_HEADER.sub("Period(s) employed by submitting HEI:\n", out)
+    out = re.sub(
+        r"(?i)Period\(s\) employed by submitting HEI:\s*submitting HEI\s*:",
+        "Period(s) employed by submitting HEI:",
+        out,
+    )
     return out
 
 def isolate_staff_names_block_with_status(
@@ -181,9 +225,9 @@ def isolate_staff_names_block_with_status(
     # Attempt in order
     for status_label in status_order:
         if status_label == "strict":
-            start_m = _first_hit(txt, [PAT_NAMES_STRICT]) or _first_hit(txt, [PAT_ROLES_STRICT, PAT_PERIODS_STRICT])
+            start_m = _first_hit(txt, [PAT_STAFF_SECTION, PAT_AUTHOR_STRICT, PAT_NAMES_STRICT, PAT_ROLES_STRICT])
         else:  # flex
-            start_m = _first_hit(txt, [PAT_NAMES_FLEX]) or _first_hit(txt, [PAT_ROLES_FLEX, PAT_PERIODS_FLEX])
+            start_m = _first_hit(txt, [PAT_STAFF_SECTION, PAT_AUTHOR_FLEX, PAT_NAMES_FLEX, PAT_ROLES_FLEX])
         if not start_m:
             continue
 
@@ -198,12 +242,8 @@ def isolate_staff_names_block_with_status(
 
         block = _canonicalise_headers(block)
 
-        # Collapse wrapped lines within paragraphs but preserve paragraph breaks
-        paras = [
-            RE_MULTI_SPACE.sub(" ", " ".join(p.strip() for p in para.splitlines())).strip()
-            for para in re.split(r"(?:\n\s*){2,}", block)
-        ]
-        out = "\n\n".join(p for p in paras if p)
+        lines = [RE_MULTI_SPACE.sub(" ", line).strip() for line in block.splitlines()]
+        out = "\n".join(line for line in lines if line).strip()
         if out.strip():
             return out, status_label
 
@@ -253,6 +293,122 @@ def extract_given_name(name_no_titles: str) -> str:
     return toks[0] if toks else ""
 
 
+CASE_STUDY_TEXT_FIELDS = [
+    "1. Summary of the impact",
+    "2. Underpinning research",
+    "3. References to the research",
+    "4. Details of the impact",
+    "5. Sources to corroborate the impact",
+]
+
+_LOCAL_NAME_STOPWORDS = {
+    "name",
+    "names",
+    "role",
+    "roles",
+    "period",
+    "periods",
+    "employed",
+    "submitting",
+    "hei",
+    "professor",
+    "reader",
+    "lecturer",
+    "senior",
+    "research",
+    "fellow",
+    "chair",
+}
+
+
+def _normalise_person_name(name: object) -> str:
+    raw = re.sub(r"\s+", " ", str(name or "")).strip(" ;,")
+    if not raw:
+        return ""
+    return strip_titles(normalize_name(raw)).strip(" ;,")
+
+
+def _valid_person_name(name: str) -> bool:
+    if not isinstance(name, str) or not name.strip():
+        return False
+    cleaned = name.strip()
+    if len(cleaned) < 2 or not re.search(r"[A-Za-z]", cleaned):
+        return False
+    lower_tokens = {t.lower().strip(".") for t in re.split(r"\s+", cleaned)}
+    if lower_tokens and lower_tokens.issubset(_LOCAL_NAME_STOPWORDS):
+        return False
+    return True
+
+
+def _split_name_candidates(names_text: str) -> list[str]:
+    text = re.sub(r"\([^)]{0,80}\)", " ", str(names_text or ""))
+    text = text.replace("•", "\n")
+    text = re.sub(r"\s+(?:and|&)\s+", "\n", text, flags=re.I)
+    parts: list[str] = []
+    for line in text.splitlines():
+        line = line.strip(" ;,")
+        if not line:
+            continue
+        line_parts = re.split(r"\s*;\s*|\s*,\s*(?=(?:Prof|Professor|Dr|Sir|Dame|Mr|Mrs|Ms|Miss)\b)", line, flags=re.I)
+        parts.extend(p for p in line_parts if p.strip())
+    return parts
+
+
+def parse_staff_block_locally(block_text: str) -> list[dict[str, Any]]:
+    """
+    Deterministic fallback for canonical REF staff tables.
+
+    This deliberately only parses explicit Name(s)/Author(s) sections; it does
+    not try to infer researchers from prose, which is left to the LLM fallback.
+    """
+    if not isinstance(block_text, str) or not block_text.strip():
+        return []
+    block = _canonicalise_headers(_norm_text(block_text))
+    name_match = re.search(r"(?mi)^\s*Name\(s\):\s*", block)
+    if not name_match:
+        return []
+
+    end_candidates = []
+    for marker in (r"(?mi)^\s*Role\(s\):", r"(?mi)^\s*Period\(s\) employed by submitting HEI:"):
+        m = re.search(marker, block[name_match.end() :])
+        if m:
+            end_candidates.append(name_match.end() + m.start())
+    end = min(end_candidates) if end_candidates else len(block)
+    names_text = block[name_match.end() : end]
+
+    people: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for candidate in _split_name_candidates(names_text):
+        name = _normalise_person_name(candidate)
+        if not _valid_person_name(name):
+            continue
+        key = name.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        people.append({"name": name, "roles": []})
+    return people
+
+
+def _case_text_fallback(row: pd.Series) -> str:
+    chunks: list[str] = []
+    title = row.get("Title", "")
+    if isinstance(title, str) and title.strip():
+        chunks.append(f"Title: {title.strip()}")
+    for col in CASE_STUDY_TEXT_FIELDS:
+        value = row.get(col, "")
+        if isinstance(value, str) and value.strip():
+            chunks.append(f"{col}\n{value.strip()}")
+    if not chunks:
+        return ""
+    return (
+        "Fallback source: full REF impact case-study text. Extract the named researchers/authors "
+        "who conducted the underpinning research for this case study. Do not extract cited-paper "
+        "authors, beneficiaries, funders, external partners, or people mentioned only as impact users.\n\n"
+        + "\n\n".join(chunks)
+    )
+
+
 def _safe_case_id_filename(case_id: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "_", case_id.strip())
 
@@ -297,10 +453,12 @@ def _get_pdf_bytes(
 # =========================
 
 _SYSTEM_MSG = (
-    "You are given REF 'Details of staff' blocks whose headers have been canonicalised to "
-    "'Name(s):', 'Role(s):', and 'Period(s) employed by submitting HEI:'. "
-    "The sections are PARALLEL LISTS. We are only interested in extracting author FORENAMES."
-    "Return JSON {'people': [{'name': ..., 'roles': [...]}]}."
+    "You are extracting named researchers/authors from REF impact case-study source text. "
+    "Inputs may be a canonical 'Details of staff' table, an Author(s) block, or a full case-study "
+    "text fallback. Prefer explicit Name(s)/Author(s) entries. For full text fallbacks, extract "
+    "only researchers who conducted the underpinning research for the case study. Do not extract "
+    "cited-paper authors, beneficiaries, funders, external partners, or people mentioned only as "
+    "impact users. Return JSON {'people': [{'name': ..., 'roles': [...]}]}."
 )
 _STAFF_TOOL = {
     "type": "function",
@@ -328,10 +486,11 @@ _STAFF_TOOL = {
 }
 
 _SYSTEM_MSG_BATCH = (
-    "You are given multiple REF 'Details of staff' blocks. "
-    "Each block has a case_id and canonical headers: "
-    "'Name(s):', 'Role(s):', and 'Period(s) employed by submitting HEI:'. "
-    "Treat each case independently and extract author FORENAMES only. "
+    "You are given multiple REF impact case-study staff/name sources. "
+    "Each item has a case_id and either a canonical staff table, an Author(s) block, or full "
+    "case-study fallback text. Treat each case independently. Extract only named researchers/authors "
+    "who conducted the underpinning research for that case. Do not extract cited-paper authors, "
+    "beneficiaries, funders, external partners, or people mentioned only as impact users. "
     "Return JSON {'cases': [{'case_id': ..., 'people': [{'name': ..., 'roles': [...]}]}]}."
 )
 _STAFF_BATCH_TOOL = {
@@ -370,21 +529,78 @@ _STAFF_BATCH_TOOL = {
 }
 
 
+def _is_retryable_openai_error(exc: Exception) -> bool:
+    status_code = getattr(exc, "status_code", None)
+    if isinstance(status_code, int):
+        if status_code in {408, 409, 429} or status_code >= 500:
+            return True
+        if status_code in {400, 401, 403, 404}:
+            return False
+
+    msg = str(exc).lower()
+    retry_terms = (
+        "connection",
+        "connect error",
+        "disconnect",
+        "connection reset",
+        "reset before headers",
+        "connection termination",
+        "timeout",
+        "timed out",
+        "temporarily unavailable",
+        "rate limit",
+        "server error",
+        "internal error",
+    )
+    return any(term in msg for term in retry_terms)
+
+
+def _create_staff_completion_with_retries(
+    client: OpenAI,
+    *,
+    max_retries: int,
+    retry_base_sleep: float,
+    **kwargs: Any,
+) -> Any:
+    attempts = max(1, int(max_retries) + 1)
+    for attempt in range(attempts):
+        try:
+            return client.chat.completions.create(**kwargs)
+        except Exception as exc:  # noqa: BLE001
+            if attempt >= attempts - 1 or not _is_retryable_openai_error(exc):
+                raise
+            base_delay = min(90.0, max(0.1, float(retry_base_sleep)) * (2 ** attempt))
+            delay = base_delay + random.uniform(0.0, min(3.0, base_delay * 0.25))
+            logging.getLogger(__name__).warning(
+                "Transient OpenAI staff extraction error; retrying in %.1fs (%s/%s): %s",
+                delay,
+                attempt + 1,
+                attempts - 1,
+                exc,
+            )
+            time.sleep(delay)
+    raise RuntimeError("OpenAI staff extraction retry loop exhausted")
+
+
 def parse_staff_with_llm(
     client: OpenAI,
     block_text: str,
-    model: str = "gpt-5.4",
+    model: str = "gpt-5.5",
     service_tier: str = "flex",
+    max_retries: int = 5,
+    retry_base_sleep: float = 1.0,
 ) -> List[Dict[str, Any]]:
     if not isinstance(block_text, str) or not block_text.strip():
         return []
-    resp = client.chat.completions.create(
+    resp = _create_staff_completion_with_retries(
+        client,
         model=model,
         messages=[{"role": "system", "content": _SYSTEM_MSG},
                   {"role": "user", "content": block_text}],
         tools=[_STAFF_TOOL],
         service_tier=service_tier,
-        temperature=0,
+        max_retries=max_retries,
+        retry_base_sleep=retry_base_sleep,
     )
     ch = resp.choices[0]
     if getattr(ch.message, "tool_calls", None):
@@ -403,8 +619,10 @@ def parse_staff_with_llm(
 def parse_staff_with_llm_batch(
     client: OpenAI,
     batch_items: List[Tuple[str, str]],
-    model: str = "gpt-5.4",
+    model: str = "gpt-5.5",
     service_tier: str = "flex",
+    max_retries: int = 5,
+    retry_base_sleep: float = 1.0,
 ) -> Dict[str, List[Dict[str, Any]]]:
     """
     Parse multiple staff blocks in a single LLM request.
@@ -424,12 +642,14 @@ def parse_staff_with_llm_batch(
         return {cid: [] for cid in case_ids}
 
     user_payload = json.dumps({"cases": payload_cases}, ensure_ascii=False)
-    resp = client.chat.completions.create(
+    resp = _create_staff_completion_with_retries(
+        client,
         model=model,
         messages=[{"role": "system", "content": _SYSTEM_MSG_BATCH}, {"role": "user", "content": user_payload}],
         tools=[_STAFF_BATCH_TOOL],
         service_tier=service_tier,
-        temperature=0,
+        max_retries=max_retries,
+        retry_base_sleep=retry_base_sleep,
     )
     ch = resp.choices[0]
 
@@ -457,6 +677,147 @@ def parse_staff_with_llm_batch(
         people = item.get("people", [])
         out[cid] = people if isinstance(people, list) else []
     return out
+
+
+def _parse_staff_batch_chat_body(body: dict[str, Any], expected_case_ids: list[str]) -> Dict[str, List[Dict[str, Any]]]:
+    out: Dict[str, List[Dict[str, Any]]] = {cid: [] for cid in expected_case_ids}
+    try:
+        choices = body.get("choices", [])
+        message = choices[0].get("message", {}) if choices else {}
+    except Exception:
+        return out
+
+    parsed_cases: List[Dict[str, Any]] = []
+    try:
+        tool_calls = message.get("tool_calls") or []
+        if tool_calls:
+            arguments = tool_calls[0].get("function", {}).get("arguments", "{}")
+            data = json.loads(arguments or "{}")
+            parsed_cases = data.get("cases", []) or []
+        else:
+            data = json.loads(message.get("content") or "{}")
+            parsed_cases = data.get("cases", []) or []
+    except Exception:
+        parsed_cases = []
+
+    for item in parsed_cases:
+        if not isinstance(item, dict):
+            continue
+        cid = str(item.get("case_id", "")).strip()
+        if cid not in out:
+            continue
+        people = item.get("people", [])
+        out[cid] = people if isinstance(people, list) else []
+    return out
+
+
+def _run_staff_openai_batch(
+    client: OpenAI,
+    *,
+    llm_items: List[Tuple[str, str]],
+    model_staff: str,
+    llm_batch_size: int,
+    batch_dir: Path,
+    batch_wait: bool,
+    batch_poll_interval_seconds: float,
+) -> tuple[Dict[str, List[Dict[str, Any]]], Dict[str, str]]:
+    people_by_case: Dict[str, List[Dict[str, Any]]] = {case_id: [] for case_id, _ in llm_items}
+    errors_by_case: Dict[str, str] = {}
+    if not llm_items:
+        return people_by_case, errors_by_case
+
+    batch_dir = Path(batch_dir)
+    batch_dir.mkdir(parents=True, exist_ok=True)
+    safe_model = re.sub(r"[^A-Za-z0-9._-]+", "_", str(model_staff))
+    basis = "\n".join(
+        f"{case_id}\t{hashlib.sha256(str(block).encode('utf-8')).hexdigest()}"
+        for case_id, block in llm_items
+    )
+    digest = hashlib.sha256(basis.encode("utf-8")).hexdigest()[:16]
+    stem = f"staff_{safe_model}_{digest}"
+    manifest_path = batch_dir / f"{stem}.manifest.json"
+    jsonl_path = batch_dir / f"{stem}.input.jsonl"
+    output_path = batch_dir / f"{stem}.output.jsonl"
+    error_path = batch_dir / f"{stem}.errors.jsonl"
+    index_path = batch_dir / f"{stem}.index.json"
+
+    requests: list[dict[str, Any]] = []
+    custom_index: dict[str, list[dict[str, str]]] = {}
+    for request_number, start in enumerate(range(0, len(llm_items), max(1, int(llm_batch_size))), start=1):
+        batch = llm_items[start : start + max(1, int(llm_batch_size))]
+        case_ids = [case_id for case_id, _ in batch]
+        payload_cases = [{"case_id": case_id, "staff_block": block} for case_id, block in batch]
+        user_payload = json.dumps({"cases": payload_cases}, ensure_ascii=False)
+        body = {
+            "model": model_staff,
+            "messages": [
+                {"role": "system", "content": _SYSTEM_MSG_BATCH},
+                {"role": "user", "content": user_payload},
+            ],
+            "tools": [_STAFF_BATCH_TOOL],
+        }
+        custom_id = f"staff-{request_number:06d}-{hashlib.sha256('|'.join(case_ids).encode('utf-8')).hexdigest()[:12]}"
+        custom_index[custom_id] = [{"case_id": case_id, "staff_block": block} for case_id, block in batch]
+        requests.append(
+            {
+                "custom_id": custom_id,
+                "method": "POST",
+                "url": "/v1/chat/completions",
+                "body": body,
+            }
+        )
+
+    if not index_path.exists():
+        index_path.write_text(json.dumps(custom_index, indent=2, sort_keys=True), encoding="utf-8")
+    else:
+        custom_index = json.loads(index_path.read_text(encoding="utf-8"))
+
+    state, manifest = create_or_retrieve_batch(
+        client,
+        manifest_path=manifest_path,
+        jsonl_path=jsonl_path,
+        output_path=output_path,
+        error_path=error_path,
+        endpoint="/v1/chat/completions",
+        requests=requests,
+        metadata={
+            "project": "ref_gender",
+            "task": "staff_extraction",
+            "model": str(model_staff),
+        },
+        wait=bool(batch_wait),
+        poll_interval_seconds=float(batch_poll_interval_seconds),
+    )
+    if state != "completed":
+        raise OpenAIBatchPending(
+            "OpenAI staff extraction batch is pending. "
+            f"batch_id={manifest.get('batch_id')} status={manifest.get('status')} "
+            f"manifest={manifest_path}. Re-run the same pipeline command later to collect it."
+        )
+
+    output_lines = read_jsonl(output_path)
+    seen_custom_ids: set[str] = set()
+    for line in output_lines:
+        custom_id = str(line.get("custom_id", ""))
+        seen_custom_ids.add(custom_id)
+        batch_items = custom_index.get(custom_id, [])
+        case_ids = [str(item["case_id"]) for item in batch_items]
+        response = line.get("response") or {}
+        status_code = int(response.get("status_code") or 0)
+        request_error = line.get("error")
+        if request_error or status_code >= 400:
+            error_text = json.dumps(request_error or response.get("body") or response, ensure_ascii=False)
+            for cid in case_ids:
+                errors_by_case[cid] = error_text
+            continue
+        parsed = _parse_staff_batch_chat_body(response.get("body") or {}, case_ids)
+        people_by_case.update(parsed)
+
+    missing_custom_ids = set(custom_index) - seen_custom_ids
+    for custom_id in sorted(missing_custom_ids):
+        for item in custom_index.get(custom_id, []):
+            errors_by_case[str(item["case_id"])] = "missing_batch_output_line"
+    return people_by_case, errors_by_case
 
 # =========================
 # 5) OFFLINE GENDER (with fallback)
@@ -541,7 +902,7 @@ def get_staff_rows(
     out_dir: str | Path,
     session: requests.Session,
     base_url="https://results2021.ref.ac.uk/impact",
-    model_staff="gpt-5.1",
+    model_staff="gpt-5.5",
     service_tier: str = "default",
     llm_enabled: bool = True,
     client: OpenAI | None = None,
@@ -549,7 +910,15 @@ def get_staff_rows(
     sleep_between_calls=0.03,
     service_mode: str = "flex",  # "strict" | "flex" | "auto"
     llm_batch_size: int = 8,
+    llm_max_retries: int = 5,
+    llm_retry_base_sleep: float = 1.0,
     pdf_cache_dir: Path | None = None,
+    require_people: bool = False,
+    local_first: bool = True,
+    openai_processing_mode: str = "sync",
+    batch_wait: bool = False,
+    batch_poll_interval_seconds: float = 60.0,
+    batch_dir: Path | None = None,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     End-to-end pipeline.
@@ -579,6 +948,11 @@ def get_staff_rows(
         .drop_duplicates()
         .tolist()
     )
+    df_ids_by_id = (
+        df_ids.assign(**{"REF impact case study identifier": df_ids["REF impact case study identifier"].astype(str).str.strip()})
+        .drop_duplicates(subset=["REF impact case study identifier"], keep="first")
+        .set_index("REF impact case study identifier", drop=False)
+    )
 
     # Explicit empty-input fast path so no network/API work is attempted and
     # output schemas remain stable.
@@ -589,7 +963,7 @@ def get_staff_rows(
         atomic_write_csv(df_master, out_dir / "ref_text_and_staff_blocks.csv")
 
         df_staff_rows = pd.DataFrame(
-            columns=["REF impact case study identifier", "given_name", "role", "offline_gender"]
+            columns=["REF impact case study identifier", "name", "given_name", "role", "offline_gender"]
         )
         atomic_write_csv(df_staff_rows, out_dir / "ref_staff_rows.csv")
 
@@ -598,6 +972,7 @@ def get_staff_rows(
                 "REF impact case study identifier",
                 "staff_block",
                 "extraction_status",
+                "names",
                 "given_names",
                 "roles",
                 "genders",
@@ -605,6 +980,8 @@ def get_staff_rows(
                 "number_male",
                 "number_female",
                 "number_unknown",
+                "staff_extraction_status",
+                "staff_extraction_error",
             ]
         )
         atomic_write_csv(ref_case_level, out_dir / "ref_case_level.csv")
@@ -664,6 +1041,13 @@ def get_staff_rows(
             blk, status = isolate_staff_names_block_with_status(text, service_mode=service_mode)
         except Exception:
             blk, status = None, "none"
+        if not blk:
+            try:
+                fallback_text = _case_text_fallback(df_ids_by_id.loc[ics]) if ics in df_ids_by_id.index else ""
+            except Exception:
+                fallback_text = ""
+            if fallback_text:
+                blk, status = fallback_text, "case_text_fallback"
         master_rows.append((ics, text, blk, status))
 
     df_master = pd.DataFrame(
@@ -681,12 +1065,71 @@ def get_staff_rows(
         (str(r["REF impact case study identifier"]).strip(), r["staff_block"])
         for _, r in df_valid_blocks.iterrows()
     ]
+    llm_items: List[Tuple[str, str]] = []
     batch_size = max(1, int(llm_batch_size))
+    case_status: Dict[str, str] = {ics: "not_attempted" for ics in ids}
+    case_error: Dict[str, str] = {ics: "" for ics in ids}
+    unresolved_ids: set[str] = set()
 
-    for start in tqdm(range(0, len(valid_items), batch_size), desc="Extracting staff with LLM"):
-        batch = valid_items[start : start + batch_size]
+    def _add_people_records(ics_id: str, people: List[Dict[str, Any]]) -> None:
+        for person in people:
+            raw_name = (person.get("name") or "").strip()
+            if not raw_name:
+                continue
+            name_norm = normalize_name(raw_name)
+            name_no_titles = strip_titles(name_norm)
+            given_name = extract_given_name(name_no_titles)
+            roles = [x.strip() for x in (person.get("roles") or []) if x.strip()]
+            records.append({
+                "REF impact case study identifier": ics_id,
+                "name": name_no_titles or None,
+                "given_name": given_name or None,
+                "role": "; ".join(roles) if roles else None
+            })
+
+    for _, row in df_master.iterrows():
+        cid = str(row["REF impact case study identifier"]).strip()
+        block = row.get("staff_block")
+        if not isinstance(block, str) or not block.strip():
+            case_status[cid] = "missing_staff_block"
+            case_error[cid] = "No staff block or case-text fallback was available."
+            unresolved_ids.add(cid)
+
+    for ics_id, block in valid_items:
+        local_people = parse_staff_block_locally(block) if local_first else []
+        if local_people:
+            case_status[ics_id] = "local_first"
+            case_error[ics_id] = ""
+            _add_people_records(ics_id, local_people)
+        else:
+            llm_items.append((ics_id, block))
+
+    batch_mode_people: Dict[str, List[Dict[str, Any]]] | None = None
+    batch_mode_errors: Dict[str, str] = {}
+    if (
+        llm_items
+        and llm_enabled
+        and client is not None
+        and str(openai_processing_mode).strip().lower() == "batch"
+    ):
+        batch_mode_people, batch_mode_errors = _run_staff_openai_batch(
+            client,
+            llm_items=llm_items,
+            model_staff=model_staff,
+            llm_batch_size=batch_size,
+            batch_dir=Path(batch_dir) if batch_dir is not None else out_dir / "batches",
+            batch_wait=bool(batch_wait),
+            batch_poll_interval_seconds=float(batch_poll_interval_seconds),
+        )
+
+    for start in tqdm(range(0, len(llm_items), batch_size), desc="Extracting staff with LLM"):
+        batch = llm_items[start : start + batch_size]
         batch_people: Dict[str, List[Dict[str, Any]]] = {ics_id: [] for ics_id, _ in batch}
-        if llm_enabled and client is not None:
+        batch_errors: Dict[str, str] = {}
+        if batch_mode_people is not None:
+            batch_people = {ics_id: batch_mode_people.get(ics_id, []) for ics_id, _ in batch}
+            batch_errors = {ics_id: batch_mode_errors[ics_id] for ics_id, _ in batch if ics_id in batch_mode_errors}
+        elif llm_enabled and client is not None:
             if len(batch) == 1:
                 ics_id, block = batch[0]
                 try:
@@ -695,10 +1138,13 @@ def get_staff_rows(
                         block,
                         model=model_staff,
                         service_tier=service_tier,
+                        max_retries=llm_max_retries,
+                        retry_base_sleep=llm_retry_base_sleep,
                     )
                 except Exception as e:
-                    print(e)
-                    batch_people[ics_id] = [{"name": None, "roles": [], "error": str(e)}]
+                    logging.getLogger(__name__).warning("Staff LLM extraction failed for %s: %s", ics_id, e)
+                    batch_people[ics_id] = []
+                    batch_errors[ics_id] = str(e)
             else:
                 try:
                     batch_people = parse_staff_with_llm_batch(
@@ -706,13 +1152,20 @@ def get_staff_rows(
                         batch,
                         model=model_staff,
                         service_tier=service_tier,
+                        max_retries=llm_max_retries,
+                        retry_base_sleep=llm_retry_base_sleep,
                     )
                 except Exception as e:
-                    print(e)
+                    logging.getLogger(__name__).warning(
+                        "Staff batch LLM extraction failed for batch starting %s: %s",
+                        batch[0][0] if batch else "unknown",
+                        e,
+                    )
                     batch_people = {}
+                    batch_errors.update({ics_id: str(e) for ics_id, _ in batch})
                 # Robust fallback if batch parse missed any case.
                 for ics_id, block in batch:
-                    if ics_id in batch_people:
+                    if batch_people.get(ics_id):
                         continue
                     try:
                         batch_people[ics_id] = parse_staff_with_llm(
@@ -720,28 +1173,47 @@ def get_staff_rows(
                             block,
                             model=model_staff,
                             service_tier=service_tier,
+                            max_retries=llm_max_retries,
+                            retry_base_sleep=llm_retry_base_sleep,
                         )
+                        if batch_people.get(ics_id):
+                            batch_errors.pop(ics_id, None)
                     except Exception as e:
-                        print(e)
-                        batch_people[ics_id] = [{"name": None, "roles": [], "error": str(e)}]
+                        logging.getLogger(__name__).warning("Staff single-case LLM retry failed for %s: %s", ics_id, e)
+                        batch_people[ics_id] = []
+                        batch_errors[ics_id] = str(e)
 
         for ics_id, _block in batch:
             people = batch_people.get(ics_id, [])
-            for person in people:
-                raw_name = (person.get("name") or "").strip()
-                name_norm = normalize_name(raw_name)
-                name_no_titles = strip_titles(name_norm)
-                given_name = extract_given_name(name_no_titles)
-                roles = [x.strip() for x in (person.get("roles") or []) if x.strip()]
-                records.append({
-                    "REF impact case study identifier": ics_id,
-                    "given_name": given_name or None,
-                    "role": "; ".join(roles) if roles else None
-                })
+            if not people:
+                local_people = parse_staff_block_locally(_block)
+                if local_people:
+                    people = local_people
+                    if batch_errors.get(ics_id):
+                        case_status[ics_id] = "local_fallback_after_llm_error"
+                        case_error[ics_id] = batch_errors[ics_id]
+                    elif llm_enabled and client is not None:
+                        case_status[ics_id] = "local_fallback_after_empty_llm"
+                    else:
+                        case_status[ics_id] = "local_only"
+                else:
+                    unresolved_ids.add(ics_id)
+                    if batch_errors.get(ics_id):
+                        case_status[ics_id] = "llm_failed"
+                        case_error[ics_id] = batch_errors[ics_id]
+                    elif llm_enabled and client is not None:
+                        case_status[ics_id] = "unresolved_empty_llm"
+                    else:
+                        case_status[ics_id] = "unresolved_no_llm"
+            else:
+                case_status[ics_id] = "llm_ok"
+                case_error[ics_id] = batch_errors.get(ics_id, "")
+
+            _add_people_records(ics_id, people)
         time.sleep(sleep_between_calls)
 
     df_staff_rows = pd.DataFrame.from_records(records, columns=[
-        "REF impact case study identifier", "given_name", "role"
+        "REF impact case study identifier", "name", "given_name", "role"
     ])
     if not df_staff_rows.empty:
         df_staff_rows["offline_gender"] = df_staff_rows["given_name"].apply(infer_gender_offline)
@@ -756,6 +1228,7 @@ def get_staff_rows(
     if df_staff_rows.empty:
         ref_case_level = pd.DataFrame({
             "REF impact case study identifier": ids,
+            "names": [[] for _ in ids],
             "given_names": [[] for _ in ids],
             "roles": [[] for _ in ids],
             "genders": [[] for _ in ids],
@@ -769,13 +1242,14 @@ def get_staff_rows(
         grouped = (
             df.groupby("REF impact case study identifier")
               .agg(
+                  names=("name", list),
                   given_names=("given_name", list),
                   roles=("role", list),
                   genders=("offline_gender", list)
               )
               .reindex(index_all)
         )
-        for col in ["given_names", "roles", "genders"]:
+        for col in ["names", "given_names", "roles", "genders"]:
             grouped[col] = grouped[col].apply(lambda x: x if isinstance(x, list) else [])
 
         counts_raw = (
@@ -803,6 +1277,21 @@ def get_staff_rows(
             .astype(int)
         )
 
+    unresolved_mask = ref_case_level["REF impact case study identifier"].astype(str).isin(unresolved_ids)
+    if bool(unresolved_mask.any()):
+        for col in ["names", "given_names", "roles", "genders"]:
+            ref_case_level.loc[unresolved_mask, col] = pd.NA
+        for col in ["number_people", "number_male", "number_female", "number_unknown"]:
+            ref_case_level.loc[unresolved_mask, col] = pd.NA
+
+    case_status_df = pd.DataFrame(
+        {
+            "REF impact case study identifier": ids,
+            "staff_extraction_status": [case_status.get(ics, "not_attempted") for ics in ids],
+            "staff_extraction_error": [case_error.get(ics, "") for ics in ids],
+        }
+    )
+
     # --- merge staff_block + extraction_status into final output ---
     df_master_subset = df_master[["REF impact case study identifier", "staff_block", "extraction_status"]].copy()
     df_master_subset["REF impact case study identifier"] = (
@@ -815,10 +1304,12 @@ def get_staff_rows(
     ref_case_level = (
         ref_case_level
         .merge(df_master_subset, on="REF impact case study identifier", how="left")
+        .merge(case_status_df, on="REF impact case study identifier", how="left")
         [[
             "REF impact case study identifier",
             "staff_block", "extraction_status",
-            "given_names", "roles", "genders",
+            "staff_extraction_status", "staff_extraction_error",
+            "names", "given_names", "roles", "genders",
             "number_people", "number_male", "number_female", "number_unknown"
         ]]
     )
@@ -837,10 +1328,27 @@ def get_staff_rows(
         lambda cid: pdf_sources.get(cid, "unknown")
     )
 
-    case_audit = ref_case_level[["REF impact case study identifier", "number_people"]].copy()
+    case_audit = ref_case_level[
+        [
+            "REF impact case study identifier",
+            "number_people",
+            "staff_extraction_status",
+            "staff_extraction_error",
+        ]
+    ].copy()
     case_audit["has_people"] = case_audit["number_people"].fillna(0).astype(float) > 0
+    case_audit["is_unresolved"] = case_audit["number_people"].isna()
     audit = master_audit.merge(case_audit, on="REF impact case study identifier", how="left")
     atomic_write_csv(audit, out_dir / "ref_staff_extraction_audit.csv")
+
+    if llm_enabled and require_people:
+        missing_people = audit.loc[~audit["has_people"].fillna(False), "REF impact case study identifier"].astype(str).tolist()
+        if missing_people:
+            preview = ", ".join(missing_people[:20])
+            raise ValueError(
+                f"Staff extraction produced zero people for {len(missing_people)} case(s). "
+                f"First missing case IDs: {preview}. See {out_dir / 'ref_staff_extraction_audit.csv'}."
+            )
 
     return df_staff_rows, ref_case_level
 
@@ -856,6 +1364,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--out-dir", type=str, default=None, help="Output directory for extracted staff files.")
     parser.add_argument("--service-mode", type=str, default="flex", choices=["strict", "flex", "auto"])
     parser.add_argument("--llm-batch-size", type=int, default=None, help="Number of ICS blocks per LLM API call.")
+    parser.add_argument("--llm-max-retries", type=int, default=None, help="Retries per staff LLM request after transient API failures.")
     parser.add_argument("--pdf-cache-dir", type=str, default=None, help="Directory for cached REF ICS PDFs.")
     parser.add_argument("--no-pdf-cache", action="store_true", help="Disable on-disk PDF caching.")
     parser.add_argument("--with-llm", action="store_true", help="Force-enable LLM extraction.")
@@ -891,6 +1400,11 @@ def main(argv: list[str] | None = None) -> int:
                 key_file=paths.project_root / str(openai_cfg.get("key_file", "keys/OPENAI_API_KEY")),
             )
         except Exception as exc:  # noqa: BLE001
+            if args.with_llm:
+                raise RuntimeError(
+                    "step02 was run with --with-llm, but the OpenAI key could not be loaded. "
+                    "Set OPENAI_API_KEY or keys/OPENAI_API_KEY before running the rebuild."
+                ) from exc
             llm_enabled = False
             llm_note = f"LLM disabled (missing/invalid key): {exc}"
             print(llm_note)
@@ -905,6 +1419,7 @@ def main(argv: list[str] | None = None) -> int:
     started_at = datetime.now(timezone.utc)
     status = "success"
     notes = llm_note
+    exit_code = 0
     row_counts: dict[str, Any] = {}
     input_paths = {"input_case_ids": input_path}
     output_paths = {
@@ -922,11 +1437,24 @@ def main(argv: list[str] | None = None) -> int:
         )
         if llm_batch_size < 1:
             llm_batch_size = 1
+        llm_max_retries = int(
+            args.llm_max_retries
+            if args.llm_max_retries is not None
+            else openai_cfg.get("staff_max_retries", 5)
+        )
+        if llm_max_retries < 0:
+            llm_max_retries = 0
+        llm_retry_base_sleep = float(openai_cfg.get("staff_retry_base_sleep", 1.0))
+        if llm_retry_base_sleep <= 0:
+            llm_retry_base_sleep = 1.0
         service_tier = "flex" if llm_enabled else str(openai_cfg.get("service_tier", "flex"))
         if llm_enabled and str(openai_cfg.get("service_tier", "flex")).lower() != "flex":
             print("[step02] Overriding configured service_tier to 'flex' for staff extraction.")
 
         step02_cfg = config.get("step02", {})
+        openai_processing_mode = str(openai_cfg.get("processing_mode", "sync")).strip().lower()
+        batch_wait = bool(openai_cfg.get("batch_wait", False))
+        batch_poll_interval_seconds = float(openai_cfg.get("batch_poll_interval_seconds", 60))
         cache_enabled = bool(step02_cfg.get("pdf_cache_enabled", True))
         if args.no_pdf_cache:
             cache_enabled = False
@@ -942,17 +1470,30 @@ def main(argv: list[str] | None = None) -> int:
             input_data_path=input_path,
             out_dir=out_dir,
             session=session,
-            model_staff=str(openai_cfg.get("model", "gpt-5.1")),
+            model_staff=str(openai_cfg.get("model", "gpt-5.5")),
             service_tier=service_tier,
             llm_enabled=llm_enabled,
             client=client,
             timeout_seconds=timeout_seconds,
             service_mode=args.service_mode,
             llm_batch_size=llm_batch_size,
+            llm_max_retries=llm_max_retries,
+            llm_retry_base_sleep=llm_retry_base_sleep,
             pdf_cache_dir=pdf_cache_dir,
+            require_people=bool(step02_cfg.get("require_people", True)),
+            local_first=bool(step02_cfg.get("staff_local_first", True)),
+            openai_processing_mode=openai_processing_mode,
+            batch_wait=batch_wait,
+            batch_poll_interval_seconds=batch_poll_interval_seconds,
+            batch_dir=paths.data_dir / "openai" / "batches",
         )
         row_counts = {"staff_rows": int(len(rows)), "case_level_rows": int(len(cases))}
         print(f"Saved staff rows: {len(rows)}; case-level rows: {len(cases)}")
+    except OpenAIBatchPending as exc:
+        status = "pending"
+        notes = str(exc)
+        print(str(exc))
+        exit_code = 75
     except Exception as exc:  # noqa: BLE001
         status = "failed"
         notes = str(exc)
@@ -971,16 +1512,21 @@ def main(argv: list[str] | None = None) -> int:
                 "service_mode": args.service_mode,
                 "service_tier": service_tier if 'service_tier' in locals() else str(openai_cfg.get("service_tier", "flex")),
                 "llm_batch_size": llm_batch_size if 'llm_batch_size' in locals() else None,
+                "llm_max_retries": llm_max_retries if 'llm_max_retries' in locals() else None,
+                "llm_retry_base_sleep": llm_retry_base_sleep if 'llm_retry_base_sleep' in locals() else None,
                 "input_path": str(input_path),
                 "pdf_cache_enabled": cache_enabled if 'cache_enabled' in locals() else None,
                 "pdf_cache_dir": str(pdf_cache_dir) if 'pdf_cache_dir' in locals() and pdf_cache_dir is not None else None,
+                "staff_local_first": bool(step02_cfg.get("staff_local_first", True)) if 'step02_cfg' in locals() else None,
+                "openai_processing_mode": openai_processing_mode if 'openai_processing_mode' in locals() else None,
+                "batch_wait": batch_wait if 'batch_wait' in locals() else None,
             },
             input_paths=input_paths,
             output_paths=output_paths,
             row_counts=row_counts,
             notes=notes,
         )
-    return 0
+    return exit_code
 
 
 if __name__ == "__main__":

@@ -62,10 +62,30 @@ def _make_cache_key(text: str, *, model: str, prompt_version: str) -> str:
     return hashlib.sha256(basis.encode("utf-8")).hexdigest()
 
 
-def _validate_gpt54_thematic_indicators(paths, *, model: str, prompt_version: str) -> dict[str, int]:
-    if model != "gpt-5.4":
+THEMATIC_TEXT_FIELDS = [
+    "1. Summary of the impact",
+    "2. Underpinning research",
+    "3. References to the research",
+    "4. Details of the impact",
+    "5. Sources to corroborate the impact",
+]
+
+
+def _combine_thematic_text(df: pd.DataFrame) -> pd.Series:
+    missing = [c for c in THEMATIC_TEXT_FIELDS if c not in df.columns]
+    if missing:
+        raise ValueError(f"enhanced_ref_data missing text columns needed for cache verification: {missing}")
+    parts = []
+    for col in THEMATIC_TEXT_FIELDS:
+        norm = _normalise_text(df[col])
+        parts.append(norm.map(lambda value, col=col: f"{col}: {value}" if value else ""))
+    return pd.concat(parts, axis=1).agg(" ".join, axis=1).str.replace(r"\s+", " ", regex=True).str.strip()
+
+
+def _validate_primary_thematic_indicators(paths, *, model: str, prompt_version: str) -> dict[str, int]:
+    if model != "gpt-5.5":
         raise ValueError(
-            f"step06_make_figure_two requires openai.model='gpt-5.4' for thematic indicators; found '{model}'."
+            f"step06_make_figure_two requires openai.model='gpt-5.5' for thematic indicators; found '{model}'."
         )
 
     enhanced_path = resolve_enhanced_ref_data_path(paths.data_dir)
@@ -75,23 +95,19 @@ def _validate_gpt54_thematic_indicators(paths, *, model: str, prompt_version: st
     if not llm_cols:
         raise ValueError("No llm_* thematic columns found in enhanced_ref_data; run step01 with --with-llm first.")
     if "llm_status" not in df_ics.columns:
-        raise ValueError("enhanced_ref_data is missing llm_status; cannot verify GPT-5.4 thematic indicators.")
+        raise ValueError("enhanced_ref_data is missing llm_status; cannot verify GPT-5.5 thematic indicators.")
 
     status_series = df_ics["llm_status"].astype(str).str.strip().str.lower()
     blocking_mask = status_series.isin(_BLOCKING_LLM_STATUSES)
     if blocking_mask.any():
         counts = df_ics.loc[blocking_mask, "llm_status"].value_counts(dropna=False).to_dict()
         raise ValueError(
-            "Figure 2 requires successful GPT-5.4 thematic indicators. "
+            "Figure 2 requires successful GPT-5.5 thematic indicators. "
             f"Found blocking llm_status values: {counts}. "
             "Re-run step01 with --with-llm after confirming OPENAI_API_KEY."
         )
 
-    text_cols = ["1. Summary of the impact", "4. Details of the impact"]
-    missing_text_cols = [c for c in text_cols if c not in df_ics.columns]
-    if missing_text_cols:
-        raise ValueError(f"enhanced_ref_data missing text columns needed for cache verification: {missing_text_cols}")
-    text_norm = (_normalise_text(df_ics[text_cols[0]]) + " " + _normalise_text(df_ics[text_cols[1]])).str.strip()
+    text_norm = _combine_thematic_text(df_ics)
     nonempty_text = text_norm != ""
     expected_keys = text_norm.loc[nonempty_text].map(lambda t: _make_cache_key(t, model=model, prompt_version=prompt_version))
     expected_unique = pd.Index(expected_keys.unique())
@@ -116,7 +132,7 @@ def _validate_gpt54_thematic_indicators(paths, *, model: str, prompt_version: st
     missing_keys = expected_unique.difference(pd.Index(target_cache.index))
     if len(missing_keys) > 0:
         raise ValueError(
-            "Figure 2 expects GPT-5.4 thematic cache entries for all non-empty case texts. "
+            "Figure 2 expects GPT-5.5 thematic cache entries for all non-empty case texts. "
             f"Missing {len(missing_keys)} cache keys for model={model}, prompt_version={prompt_version}. "
             "Re-run step01 with --with-llm."
         )
@@ -126,7 +142,7 @@ def _validate_gpt54_thematic_indicators(paths, *, model: str, prompt_version: st
     if not blocked_cache.empty:
         bad_counts = blocked_cache.value_counts(dropna=False).to_dict()
         raise ValueError(
-            "GPT-5.4 thematic cache contains blocking statuses for Figure 2: "
+            "GPT-5.5 thematic cache contains blocking statuses for Figure 2: "
             f"{bad_counts}. Re-run step01 with --with-llm."
         )
 
@@ -164,10 +180,10 @@ def main(argv: list[str] | None = None) -> int:
     }
     try:
         openai_cfg = config.get("openai", {})
-        print("[step06] Validating thematic indicators are GPT-5.4-derived...")
-        llm_validation_counts = _validate_gpt54_thematic_indicators(
+        print("[step06] Validating thematic indicators are GPT-5.5-derived...")
+        llm_validation_counts = _validate_primary_thematic_indicators(
             paths,
-            model=str(openai_cfg.get("model", "gpt-5.4")),
+            model=str(openai_cfg.get("model", "gpt-5.5")),
             prompt_version=str(openai_cfg.get("prompt_version", "v2")),
         )
         print(

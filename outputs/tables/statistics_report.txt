@@ -3,431 +3,431 @@ DESCRIPTIVE SUMMARY OF FEMALE REPRESENTATION IN ICS & OUTPUTS
 ============================================================
 
 Overall female share:
-  • Outputs: 295,846.0 women / 854,366.0 total = 34.63% female
-  • ICS:     6,272 women / 16,470 total = 38.08% female
+  • Outputs: 378,816 women / 1,126,375 total = 33.63% female
+  • ICS:     6,275.0 women / 16,446.0 total = 38.16% female
 
-All-female ICS submissions (excluding unknowns): 1,291 (20.30% of all ICS cases)
+All-female ICS submissions (excluding unknowns): 1,301 (20.45% of all ICS cases)
 
 LLM-tagged ICS cases (aggregate across all panels):
     llm_topic  n_cases % of ICS  female  total_people % female
-      Charity     1781    28.00    2141          4509    47.48
-   Drug Trial      403     6.34     440          1378    31.93
-        Error        0     0.00       0             0      NaN
-     Heritage      609     9.57     567          1253    45.25
-  Legislation     1179    18.53    1154          2880    40.07
-Manufacturing      494     7.77     288          1490    19.33
-       Museum      827    13.00     788          1682    46.85
-          Nhs     1092    17.17    1658          3643    45.51
-       Patent      377     5.93     229          1204    19.02
-       School      926    14.56    1141          2371    48.12
-     Software     1381    21.71    1263          4123    30.63
-      Startup      587     9.23     420          1847    22.74
-       Status        0     0.00       0             0      NaN
+      Charity     2595    40.80  3191.0        6712.0    47.54
+   Drug Trial      558     8.77   614.0        1846.0    33.26
+        Error        0     0.00     0.0           0.0      NaN
+     Heritage      851    13.38   768.0        1740.0    44.14
+  Legislation     1448    22.76  1425.0        3638.0    39.17
+Manufacturing      695    10.93   413.0        2063.0    20.02
+       Museum      904    14.21   874.0        1880.0    46.49
+          Nhs     1257    19.76  1880.0        4136.0    45.45
+       Patent      516     8.11   282.0        1576.0    17.89
+       School     1263    19.86  1502.0        3193.0    47.04
+     Software     1848    29.05  1807.0        5536.0    32.64
+      Startup      638    10.03   445.0        1949.0    22.83
+       Status        0     0.00     0.0           0.0      NaN
 
 LLM-tagged ICS cases by panel:
     llm_topic  n_cases % of panel ICS  female  total_people % female panel
-      Charity      387          27.27     698          1343    51.97     A
-   Drug Trial      307          21.63     376          1103    34.09     A
-        Error        0           0.00       0             0      NaN     A
-     Heritage        9           0.63       6            19    31.58     A
-  Legislation      216          15.22     288           645    44.65     A
-Manufacturing       94           6.62     108           312    34.62     A
-       Museum       18           1.27      23            45    51.11     A
-          Nhs      702          49.47    1252          2584    48.45     A
-       Patent      129           9.09     126           408    30.88     A
-       School      107           7.54     159           283    56.18     A
-     Software      259          18.25     420           930    45.16     A
-      Startup      144          10.15     145           435    33.33     A
-       Status        0           0.00       0             0      NaN     A
-      Charity      128          10.09      88           402    21.89     B
-   Drug Trial       79           6.23      46           231    19.91     B
-        Error        0           0.00       0             0      NaN     B
-     Heritage       31           2.44      27           124    21.77     B
-  Legislation      178          14.04     133           548    24.27     B
-Manufacturing      319          25.16     122           951    12.83     B
-       Museum       59           4.65      48           222    21.62     B
-          Nhs      112           8.83      76           357    21.29     B
-       Patent      216          17.03      81           694    11.67     B
-       School       94           7.41      98           390    25.13     B
-     Software      570          44.95     291          1759    16.54     B
-      Startup      307          24.21     131           994    13.18     B
-       Status        0           0.00       0             0      NaN     B
-      Charity      763          35.55     909          1859    48.90     C
-   Drug Trial       10           0.47       8            22    36.36     C
-        Error        0           0.00       0             0      NaN     C
-     Heritage      110           5.13     113           267    42.32     C
-  Legislation      663          30.89     640          1449    44.17     C
-Manufacturing       54           2.52      33           156    21.15     C
-       Museum      109           5.08     139           270    51.48     C
-          Nhs      178           8.29     223           487    45.79     C
-       Patent       22           1.03      12            68    17.65     C
-       School      321          14.96     500           946    52.85     C
-     Software      303          14.12     301           850    35.41     C
-      Startup       89           4.15      89           291    30.58     C
-       Status        0           0.00       0             0      NaN     C
-      Charity      503          32.92     446           905    49.28     D
-   Drug Trial        7           0.46      10            22    45.45     D
-        Error        0           0.00       0             0      NaN     D
-     Heritage      459          30.04     421           843    49.94     D
-  Legislation      122           7.98      93           238    39.08     D
-Manufacturing       27           1.77      25            71    35.21     D
-       Museum      641          41.95     578          1145    50.48     D
-          Nhs      100           6.54     107           215    49.77     D
-       Patent       10           0.65      10            34    29.41     D
-       School      404          26.44     384           752    51.06     D
-     Software      249          16.30     251           584    42.98     D
-      Startup       47           3.08      55           127    43.31     D
-       Status        0           0.00       0             0      NaN     D
+      Charity      646          45.53  1152.0        2236.0    51.52     A
+   Drug Trial      409          28.82   510.0        1428.0    35.71     A
+        Error        0           0.00     0.0           0.0      NaN     A
+     Heritage       26           1.83    23.0          68.0    33.82     A
+  Legislation      306          21.56   408.0         952.0    42.86     A
+Manufacturing      136           9.58   141.0         413.0    34.14     A
+       Museum       23           1.62    34.0          67.0    50.75     A
+          Nhs      758          53.42  1343.0        2756.0    48.73     A
+       Patent      164          11.56   134.0         483.0    27.74     A
+       School      159          11.21   243.0         456.0    53.29     A
+     Software      381          26.85   640.0        1367.0    46.82     A
+      Startup      150          10.57   148.0         450.0    32.89     A
+       Status        0           0.00     0.0           0.0      NaN     A
+      Charity      210          16.56   170.0         672.0    25.30     B
+   Drug Trial      116           9.15    70.0         338.0    20.71     B
+        Error        0           0.00     0.0           0.0      NaN     B
+     Heritage       47           3.71    44.0         174.0    25.29     B
+  Legislation      226          17.82   148.0         670.0    22.09     B
+Manufacturing      439          34.62   178.0        1313.0    13.56     B
+       Museum       66           5.21    59.0         252.0    23.41     B
+          Nhs      140          11.04    97.0         446.0    21.75     B
+       Patent      308          24.29   116.0         966.0    12.01     B
+       School      128          10.09   118.0         499.0    23.65     B
+     Software      701          55.28   369.0        2106.0    17.52     B
+      Startup      335          26.42   145.0        1044.0    13.89     B
+       Status        0           0.00     0.0           0.0      NaN     B
+      Charity     1054          49.11  1263.0        2562.0    49.30     C
+   Drug Trial       21           0.98    19.0          48.0    39.58     C
+        Error        0           0.00     0.0           0.0      NaN     C
+     Heritage      160           7.46   169.0         389.0    43.44     C
+  Legislation      761          35.46   740.0        1718.0    43.07     C
+Manufacturing       87           4.05    65.0         256.0    25.39     C
+       Museum      128           5.96   165.0         325.0    50.77     C
+          Nhs      240          11.18   312.0         678.0    46.02     C
+       Patent       29           1.35    20.0          89.0    22.47     C
+       School      430          20.04   637.0        1221.0    52.17     C
+     Software      448          20.88   462.0        1298.0    35.59     C
+      Startup       98           4.57    91.0         307.0    29.64     C
+       Status        0           0.00     0.0           0.0      NaN     C
+      Charity      685          44.83   606.0        1242.0    48.79     D
+   Drug Trial       12           0.79    15.0          32.0    46.88     D
+        Error        0           0.00     0.0           0.0      NaN     D
+     Heritage      618          40.45   532.0        1109.0    47.97     D
+  Legislation      155          10.14   129.0         298.0    43.29     D
+Manufacturing       33           2.16    29.0          81.0    35.80     D
+       Museum      687          44.96   616.0        1236.0    49.84     D
+          Nhs      119           7.79   128.0         256.0    50.00     D
+       Patent       15           0.98    12.0          38.0    31.58     D
+       School      546          35.73   504.0        1017.0    49.56     D
+     Software      318          20.81   336.0         765.0    43.92     D
+      Startup       55           3.60    61.0         148.0    41.22     D
+       Status        0           0.00     0.0           0.0      NaN     D
 
 Female share by REF main panel (aggregated across UoAs):
-  Panel A: Outputs 198,941/499,422 = 39.83% | ICS 2,135/4,696 = 45.46%
-  Panel B: Outputs 37,063/193,772 = 19.13% | ICS 679/3,784 = 17.94%
-  Panel C: Outputs 49,588/138,193 = 35.88% | ICS 2,170/5,214 = 41.62%
-  Panel D: Outputs 10,254/22,979 = 44.62% | ICS 1,288/2,776 = 46.40%
+  Panel A: Outputs 268,312/670,449 = 40.02% | ICS 2,121/4,661 = 45.51%
+  Panel B: Outputs 44,350/278,620 = 15.92% | ICS 689/3,772 = 18.27%
+  Panel C: Outputs 55,487/153,399 = 36.17% | ICS 2,174/5,230 = 41.57%
+  Panel D: Outputs 10,667/23,907 = 44.62% | ICS 1,291/2,783 = 46.39%
 
 All-female ICS submissions by panel:
-  Panel A: 246 (17.34% of 1,419 ICS cases)
-  Panel B: 67 (5.28% of 1,268 ICS cases)
-  Panel C: 472 (21.99% of 2,146 ICS cases)
-  Panel D: 506 (33.12% of 1,528 ICS cases)
+  Panel A: 249 (17.55% of 1,419 ICS cases)
+  Panel B: 71 (5.60% of 1,268 ICS cases)
+  Panel C: 474 (22.09% of 2,146 ICS cases)
+  Panel D: 507 (33.18% of 1,528 ICS cases)
 Universities with highest female Impact (ICS) proportions:
                     Institution name  pct_female_ics  pct_female_output
       Stranmillis University College        1.000000           0.741379
-              Royal College of Music        0.800000           0.622642
-Queen Margaret University, Edinburgh        0.714286           0.624060
-          Courtauld Institute of Art        0.714286           0.750000
-              The Metanoia Institute        0.666667           0.520833
+              Royal College of Music        0.800000           0.618182
+Queen Margaret University, Edinburgh        0.714286           0.622715
+          Courtauld Institute of Art        0.714286           0.730769
+              The Metanoia Institute        0.666667           0.500000
 
 Universities with lowest female Impact (ICS) proportions:
                                Institution name  pct_female_ics  pct_female_output
-Rose Bruford College of Theatre and Performance        0.000000           0.400000
+Rose Bruford College of Theatre and Performance        0.000000           0.428571
  Trinity Laban Conservatoire of Music and Dance        0.000000           0.692308
-              Guildhall School of Music & Drama        0.000000           0.200000
-                 Solent University, Southampton        0.166667           0.434932
-                            Falmouth University        0.176471           0.335714
+              Guildhall School of Music & Drama        0.000000           0.181818
+                            Falmouth University        0.176471           0.315068
+   The Royal Central School of Speech and Drama        0.200000           0.585366
 
 Universities with largest positive difference (ICS − Output):
-                Institution name  pct_female_ics  pct_female_output  diff_ics_output
-             Hartpury University             0.6           0.263158         0.336842
-  Stranmillis University College             1.0           0.741379         0.258621
-  Ravensbourne University London             0.5           0.290323         0.209677
-Arts University Bournemouth, the             0.6           0.416667         0.183333
-          Royal College of Music             0.8           0.622642         0.177358
+                                     Institution name  pct_female_ics  pct_female_output  diff_ics_output
+                                  Hartpury University        0.600000           0.245098         0.354902
+                       Stranmillis University College        1.000000           0.741379         0.258621
+                       Ravensbourne University London        0.500000           0.300000         0.200000
+                                  Coventry University        0.508197           0.311070         0.197127
+Anglia Ruskin University Higher Education Corporation        0.575758           0.384249         0.191508
 
 Universities with largest negative difference (ICS − Output):
                                Institution name  pct_female_ics  pct_female_output  diff_ics_output
  Trinity Laban Conservatoire of Music and Dance        0.000000           0.692308        -0.692308
-   The Royal Central School of Speech and Drama        0.200000           0.647059        -0.447059
-                 Norwich University of the Arts        0.333333           0.758621        -0.425287
-Rose Bruford College of Theatre and Performance        0.000000           0.400000        -0.400000
-               University for the Creative Arts        0.333333           0.692308        -0.358974
+Rose Bruford College of Theatre and Performance        0.000000           0.428571        -0.428571
+   The Royal Central School of Speech and Drama        0.200000           0.585366        -0.385366
+               University for the Creative Arts        0.333333           0.625000        -0.291667
+                 Norwich University of the Arts        0.333333           0.600000        -0.266667
 
 UoAs with highest female Impact (ICS) proportions:
                                    Unit of assessment name  pct_female_ics  pct_female_output
-                           English Language and Literature        0.572854           0.520712
-                             Social Work and Social Policy        0.569149           0.550682
-Allied Health Professions, Dentistry, Nursing and Pharmacy        0.568382           0.436160
-                                                 Education        0.558908           0.554142
-                                                 Sociology        0.557522           0.505938
+                             Social Work and Social Policy        0.572954           0.548431
+                           English Language and Literature        0.571713           0.515454
+Allied Health Professions, Dentistry, Nursing and Pharmacy        0.571534           0.435215
+                                                 Education        0.561684           0.553689
+                                                 Sociology        0.557018           0.507486
 
 UoAs with lowest female Impact (ICS) proportions:
          Unit of assessment name  pct_female_ics  pct_female_output
-                         Physics        0.143333           0.090683
-Computer Science and Informatics        0.154778           0.196051
-                     Engineering        0.159016           0.205298
-                       Chemistry        0.186047           0.251420
-      Economics and Econometrics        0.230769           0.207314
+                         Physics        0.140468           0.069421
+                     Engineering        0.160596           0.191686
+Computer Science and Informatics        0.162162           0.186174
+                       Chemistry        0.191126           0.249738
+      Economics and Econometrics        0.221477           0.203791
 
 UoAs with largest positive difference (ICS − Output):
                                    Unit of assessment name  pct_female_ics  pct_female_output  diff_ics_output
-                   Psychology, Psychiatry and Neuroscience        0.545354           0.410258         0.135096
-Allied Health Professions, Dentistry, Nursing and Pharmacy        0.568382           0.436160         0.132222
-                                                       Law        0.534177           0.418484         0.115693
-                                                  Classics        0.531646           0.418259         0.113387
-                                                Philosophy        0.346405           0.247893         0.098512
+                                                  Classics        0.538462           0.397083         0.141379
+Allied Health Professions, Dentistry, Nursing and Pharmacy        0.571534           0.435215         0.136320
+                   Psychology, Psychiatry and Neuroscience        0.540749           0.415265         0.125483
+                                                Philosophy        0.348387           0.250825         0.097562
+                                                       Law        0.539604           0.458841         0.080763
 
 UoAs with largest negative difference (ICS − Output):
                                       Unit of assessment name  pct_female_ics  pct_female_output  diff_ics_output
-                                            Clinical Medicine        0.304933           0.388782        -0.083849
-                                          Biological Sciences        0.276074           0.352988        -0.076914
-                                                    Chemistry        0.186047           0.251420        -0.065373
-Music, Drama, Dance, Performing Arts, Film and Screen Studies        0.404389           0.460476        -0.056087
-                                                  Engineering        0.159016           0.205298        -0.046282
+                                            Clinical Medicine        0.304447           0.390318        -0.085871
+                                          Biological Sciences        0.280992           0.354131        -0.073139
+                                                    Chemistry        0.191126           0.249738        -0.058611
+Music, Drama, Dance, Performing Arts, Film and Screen Studies        0.404389           0.438825        -0.034436
+                                                  Engineering        0.160596           0.191686        -0.031090
 
 Panel-specific UoA breakdowns:
 
 Panel A:
   UoAs with highest female Impact (ICS) proportions:
                                    Unit of assessment name  pct_female_ics  pct_female_output
-Allied Health Professions, Dentistry, Nursing and Pharmacy        0.568382           0.436160
-                   Psychology, Psychiatry and Neuroscience        0.545354           0.410258
-           Public Health, Health Services and Primary Care        0.479026           0.418231
-                 Agriculture, Food and Veterinary Sciences        0.346154           0.363120
-                                         Clinical Medicine        0.304933           0.388782
+Allied Health Professions, Dentistry, Nursing and Pharmacy        0.571534           0.435215
+                   Psychology, Psychiatry and Neuroscience        0.540749           0.415265
+           Public Health, Health Services and Primary Care        0.478796           0.412496
+                 Agriculture, Food and Veterinary Sciences        0.339744           0.366702
+                                         Clinical Medicine        0.304447           0.390318
   UoAs with lowest female Impact (ICS) proportions:
                         Unit of assessment name  pct_female_ics  pct_female_output
-                            Biological Sciences        0.276074           0.352988
-                              Clinical Medicine        0.304933           0.388782
-      Agriculture, Food and Veterinary Sciences        0.346154           0.363120
-Public Health, Health Services and Primary Care        0.479026           0.418231
-        Psychology, Psychiatry and Neuroscience        0.545354           0.410258
+                            Biological Sciences        0.280992           0.354131
+                              Clinical Medicine        0.304447           0.390318
+      Agriculture, Food and Veterinary Sciences        0.339744           0.366702
+Public Health, Health Services and Primary Care        0.478796           0.412496
+        Psychology, Psychiatry and Neuroscience        0.540749           0.415265
   UoAs with largest positive difference (ICS − Output):
                                    Unit of assessment name  pct_female_ics  pct_female_output  diff_ics_output
-                   Psychology, Psychiatry and Neuroscience        0.545354           0.410258         0.135096
-Allied Health Professions, Dentistry, Nursing and Pharmacy        0.568382           0.436160         0.132222
-           Public Health, Health Services and Primary Care        0.479026           0.418231         0.060795
-                 Agriculture, Food and Veterinary Sciences        0.346154           0.363120        -0.016966
-                                       Biological Sciences        0.276074           0.352988        -0.076914
+Allied Health Professions, Dentistry, Nursing and Pharmacy        0.571534           0.435215         0.136320
+                   Psychology, Psychiatry and Neuroscience        0.540749           0.415265         0.125483
+           Public Health, Health Services and Primary Care        0.478796           0.412496         0.066300
+                 Agriculture, Food and Veterinary Sciences        0.339744           0.366702        -0.026959
+                                       Biological Sciences        0.280992           0.354131        -0.073139
   UoAs with largest negative difference (ICS − Output):
-                                   Unit of assessment name  pct_female_ics  pct_female_output  diff_ics_output
-                                         Clinical Medicine        0.304933           0.388782        -0.083849
-                                       Biological Sciences        0.276074           0.352988        -0.076914
-                 Agriculture, Food and Veterinary Sciences        0.346154           0.363120        -0.016966
-           Public Health, Health Services and Primary Care        0.479026           0.418231         0.060795
-Allied Health Professions, Dentistry, Nursing and Pharmacy        0.568382           0.436160         0.132222
+                        Unit of assessment name  pct_female_ics  pct_female_output  diff_ics_output
+                              Clinical Medicine        0.304447           0.390318        -0.085871
+                            Biological Sciences        0.280992           0.354131        -0.073139
+      Agriculture, Food and Veterinary Sciences        0.339744           0.366702        -0.026959
+Public Health, Health Services and Primary Care        0.478796           0.412496         0.066300
+        Psychology, Psychiatry and Neuroscience        0.540749           0.415265         0.125483
   Summary statistics (Impact) for pct female across UoAs:
 count    6.000
-mean     0.420
+mean     0.419
 std      0.127
-min      0.276
-25%      0.315
-50%      0.413
-75%      0.529
-max      0.568
+min      0.281
+25%      0.313
+50%      0.409
+75%      0.525
+max      0.572
   Summary statistics (Outputs) for pct female across UoAs:
 count    6.000
-mean     0.395
-std      0.033
-min      0.353
-25%      0.370
-50%      0.400
-75%      0.416
-max      0.436
+mean     0.396
+std      0.031
+min      0.354
+25%      0.373
+50%      0.401
+75%      0.415
+max      0.435
 
 Panel B:
   UoAs with highest female Impact (ICS) proportions:
                  Unit of assessment name  pct_female_ics  pct_female_output
-Earth Systems and Environmental Sciences        0.261044           0.278694
-                   Mathematical Sciences        0.232227           0.194792
-                               Chemistry        0.186047           0.251420
-                             Engineering        0.159016           0.205298
-        Computer Science and Informatics        0.154778           0.196051
+Earth Systems and Environmental Sciences        0.266272           0.275324
+                   Mathematical Sciences        0.234742           0.161797
+                               Chemistry        0.191126           0.249738
+        Computer Science and Informatics        0.162162           0.186174
+                             Engineering        0.160596           0.191686
   UoAs with lowest female Impact (ICS) proportions:
          Unit of assessment name  pct_female_ics  pct_female_output
-                         Physics        0.143333           0.090683
-Computer Science and Informatics        0.154778           0.196051
-                     Engineering        0.159016           0.205298
-                       Chemistry        0.186047           0.251420
-           Mathematical Sciences        0.232227           0.194792
+                         Physics        0.140468           0.069421
+                     Engineering        0.160596           0.191686
+Computer Science and Informatics        0.162162           0.186174
+                       Chemistry        0.191126           0.249738
+           Mathematical Sciences        0.234742           0.161797
   UoAs with largest positive difference (ICS − Output):
                  Unit of assessment name  pct_female_ics  pct_female_output  diff_ics_output
-                                 Physics        0.143333           0.090683         0.052650
-                   Mathematical Sciences        0.232227           0.194792         0.037435
-Earth Systems and Environmental Sciences        0.261044           0.278694        -0.017650
-        Computer Science and Informatics        0.154778           0.196051        -0.041273
-                             Engineering        0.159016           0.205298        -0.046282
+                   Mathematical Sciences        0.234742           0.161797         0.072945
+                                 Physics        0.140468           0.069421         0.071047
+Earth Systems and Environmental Sciences        0.266272           0.275324        -0.009052
+        Computer Science and Informatics        0.162162           0.186174        -0.024012
+                             Engineering        0.160596           0.191686        -0.031090
   UoAs with largest negative difference (ICS − Output):
                  Unit of assessment name  pct_female_ics  pct_female_output  diff_ics_output
-                               Chemistry        0.186047           0.251420        -0.065373
-                             Engineering        0.159016           0.205298        -0.046282
-        Computer Science and Informatics        0.154778           0.196051        -0.041273
-Earth Systems and Environmental Sciences        0.261044           0.278694        -0.017650
-                   Mathematical Sciences        0.232227           0.194792         0.037435
+                               Chemistry        0.191126           0.249738        -0.058611
+                             Engineering        0.160596           0.191686        -0.031090
+        Computer Science and Informatics        0.162162           0.186174        -0.024012
+Earth Systems and Environmental Sciences        0.266272           0.275324        -0.009052
+                                 Physics        0.140468           0.069421         0.071047
   Summary statistics (Impact) for pct female across UoAs:
 count    6.000
-mean     0.189
-std      0.047
-min      0.143
-25%      0.156
-50%      0.173
-75%      0.221
-max      0.261
+mean     0.193
+std      0.049
+min      0.140
+25%      0.161
+50%      0.177
+75%      0.224
+max      0.266
   Summary statistics (Outputs) for pct female across UoAs:
 count    6.000
-mean     0.203
-std      0.065
-min      0.091
-25%      0.195
-50%      0.201
-75%      0.240
-max      0.279
+mean     0.189
+std      0.072
+min      0.069
+25%      0.168
+50%      0.189
+75%      0.235
+max      0.275
 
 Panel C:
   UoAs with highest female Impact (ICS) proportions:
              Unit of assessment name  pct_female_ics  pct_female_output
-       Social Work and Social Policy        0.569149           0.550682
-                           Education        0.558908           0.554142
-                           Sociology        0.557522           0.505938
-                                 Law        0.534177           0.418484
-Anthropology and Development Studies        0.460432           0.411852
+       Social Work and Social Policy        0.572954           0.548431
+                           Education        0.561684           0.553689
+                           Sociology        0.557018           0.507486
+                                 Law        0.539604           0.458841
+Anthropology and Development Studies        0.456522           0.409940
   UoAs with lowest female Impact (ICS) proportions:
                          Unit of assessment name  pct_female_ics  pct_female_output
-                      Economics and Econometrics        0.230769           0.207314
-    Architecture, Built Environment and Planning        0.281579           0.295996
-Sport and Exercise Sciences, Leisure and Tourism        0.316699           0.326871
-             Geography and Environmental Studies        0.343454           0.294821
-                 Business and Management Studies        0.344681           0.311484
+                      Economics and Econometrics        0.221477           0.203791
+    Architecture, Built Environment and Planning        0.286486           0.290959
+Sport and Exercise Sciences, Leisure and Tourism        0.316092           0.340372
+                 Business and Management Studies        0.341176           0.311240
+             Geography and Environmental Studies        0.341509           0.294100
   UoAs with largest positive difference (ICS − Output):
              Unit of assessment name  pct_female_ics  pct_female_output  diff_ics_output
-                                 Law        0.534177           0.418484         0.115693
-                           Sociology        0.557522           0.505938         0.051584
- Geography and Environmental Studies        0.343454           0.294821         0.048633
-Anthropology and Development Studies        0.460432           0.411852         0.048579
-     Business and Management Studies        0.344681           0.311484         0.033197
+                                 Law        0.539604           0.458841         0.080763
+                           Sociology        0.557018           0.507486         0.049532
+ Geography and Environmental Studies        0.341509           0.294100         0.047409
+Anthropology and Development Studies        0.456522           0.409940         0.046582
+     Business and Management Studies        0.341176           0.311240         0.029936
   UoAs with largest negative difference (ICS − Output):
                          Unit of assessment name  pct_female_ics  pct_female_output  diff_ics_output
-    Architecture, Built Environment and Planning        0.281579           0.295996        -0.014417
-Sport and Exercise Sciences, Leisure and Tourism        0.316699           0.326871        -0.010172
-                                       Education        0.558908           0.554142         0.004766
-                   Social Work and Social Policy        0.569149           0.550682         0.018467
-                                     Archaeology        0.391566           0.373005         0.018561
+Sport and Exercise Sciences, Leisure and Tourism        0.316092           0.340372        -0.024280
+    Architecture, Built Environment and Planning        0.286486           0.290959        -0.004473
+                                       Education        0.561684           0.553689         0.007995
+                                     Archaeology        0.385542           0.372132         0.013410
+                      Economics and Econometrics        0.221477           0.203791         0.017685
   Summary statistics (Impact) for pct female across UoAs:
 count    12.000
-mean      0.413
-std       0.119
-min       0.231
-25%       0.337
-50%       0.378
-75%       0.540
-max       0.569
+mean      0.412
+std       0.121
+min       0.221
+25%       0.335
+50%       0.374
+75%       0.544
+max       0.573
   Summary statistics (Outputs) for pct female across UoAs:
 count    12.000
-mean      0.382
-std       0.109
-min       0.207
-25%       0.308
-50%       0.353
-75%       0.440
+mean      0.386
+std       0.111
+min       0.204
+25%       0.307
+50%       0.356
+75%       0.471
 max       0.554
 
 Panel D:
   UoAs with highest female Impact (ICS) proportions:
                                                       Unit of assessment name  pct_female_ics  pct_female_output
-                                              English Language and Literature        0.572854           0.520712
-                                             Modern Languages and Linguistics        0.536977           0.546992
-                                                                     Classics        0.531646           0.418259
-Communication, Cultural and Media Studies, Library and Information Management        0.514815           0.446368
-                                                                 Area Studies        0.511111           0.451140
+                                              English Language and Literature        0.571713           0.515454
+                                             Modern Languages and Linguistics        0.539683           0.555287
+                                                                     Classics        0.538462           0.397083
+Communication, Cultural and Media Studies, Library and Information Management        0.511194           0.461638
+                                                                 Area Studies        0.505495           0.457393
   UoAs with lowest female Impact (ICS) proportions:
                                       Unit of assessment name  pct_female_ics  pct_female_output
-                               Theology and Religious Studies        0.339450           0.339688
-                                                   Philosophy        0.346405           0.247893
-                                                      History        0.369444           0.369799
-Music, Drama, Dance, Performing Arts, Film and Screen Studies        0.404389           0.460476
-                 Art and Design: History, Practice and Theory        0.436644           0.460257
+                               Theology and Religious Studies        0.339450           0.328100
+                                                   Philosophy        0.348387           0.250825
+                                                      History        0.368421           0.381547
+Music, Drama, Dance, Performing Arts, Film and Screen Studies        0.404389           0.438825
+                 Art and Design: History, Practice and Theory        0.437607           0.449655
   UoAs with largest positive difference (ICS − Output):
                                                       Unit of assessment name  pct_female_ics  pct_female_output  diff_ics_output
-                                                                     Classics        0.531646           0.418259         0.113387
-                                                                   Philosophy        0.346405           0.247893         0.098512
-Communication, Cultural and Media Studies, Library and Information Management        0.514815           0.446368         0.068447
-                                                                 Area Studies        0.511111           0.451140         0.059971
-                                              English Language and Literature        0.572854           0.520712         0.052142
+                                                                     Classics        0.538462           0.397083         0.141379
+                                                                   Philosophy        0.348387           0.250825         0.097562
+                                              English Language and Literature        0.571713           0.515454         0.056259
+Communication, Cultural and Media Studies, Library and Information Management        0.511194           0.461638         0.049556
+                                                                 Area Studies        0.505495           0.457393         0.048102
   UoAs with largest negative difference (ICS − Output):
                                       Unit of assessment name  pct_female_ics  pct_female_output  diff_ics_output
-Music, Drama, Dance, Performing Arts, Film and Screen Studies        0.404389           0.460476        -0.056087
-                 Art and Design: History, Practice and Theory        0.436644           0.460257        -0.023613
-                             Modern Languages and Linguistics        0.536977           0.546992        -0.010015
-                                                      History        0.369444           0.369799        -0.000354
-                               Theology and Religious Studies        0.339450           0.339688        -0.000239
+Music, Drama, Dance, Performing Arts, Film and Screen Studies        0.404389           0.438825        -0.034436
+                             Modern Languages and Linguistics        0.539683           0.555287        -0.015604
+                                                      History        0.368421           0.381547        -0.013126
+                 Art and Design: History, Practice and Theory        0.437607           0.449655        -0.012049
+                               Theology and Religious Studies        0.339450           0.328100         0.011349
   Summary statistics (Impact) for pct female across UoAs:
 count    10.000
 mean      0.456
 std       0.087
 min       0.339
-25%       0.378
-50%       0.474
-75%       0.527
-max       0.573
+25%       0.377
+50%       0.472
+75%       0.532
+max       0.572
   Summary statistics (Outputs) for pct female across UoAs:
 count    10.000
-mean      0.426
-std       0.088
-min       0.248
-25%       0.382
-50%       0.449
-75%       0.460
-max       0.547
+mean      0.424
+std       0.089
+min       0.251
+25%       0.385
+50%       0.444
+75%       0.461
+max       0.555
 
 Average female share by Discipline group (STEM vs SHAPE):
-                  pct_female_ics  pct_female_output   diff
-Discipline_group                                          
-SHAPE                      0.438              0.402  0.035
-STEM                       0.283              0.289 -0.006
+                  pct_female_ics  pct_female_output  diff
+Discipline_group                                         
+SHAPE                      0.437              0.403 0.033
+STEM                       0.285              0.281 0.003
 
 Summary statistics of female proportions across Universities and UoAs:
 Universities (Impact):
 count    155.000
-mean       0.403
-std        0.130
+mean       0.404
+std        0.129
 min        0.000
-25%        0.333
+25%        0.332
 50%        0.400
-75%        0.465
+75%        0.467
 max        1.000
 
 UoAs (Impact):
 count    34.000
-mean      0.387
+mean      0.388
 std       0.136
-min       0.143
-25%       0.287
-50%       0.367
-75%       0.527
+min       0.140
+25%       0.291
+50%       0.365
+75%       0.532
 max       0.573
 
 Universities (Outputs):
 count    157.000
-mean       0.393
+mean       0.386
 std        0.102
-min        0.200
-25%        0.334
-50%        0.370
-75%        0.407
-max        0.759
+min        0.182
+25%        0.331
+50%        0.368
+75%        0.408
+max        0.750
 
 UoAs (Outputs):
 count    34.000
-mean      0.366
-std       0.114
-min       0.091
-25%       0.295
-50%       0.371
-75%       0.444
-max       0.554
+mean      0.364
+std       0.119
+min       0.069
+25%       0.292
+50%       0.377
+75%       0.447
+max       0.555
 
 Hypothesis across all levels: female proportion in ICS exceeds Outputs (one-sided tests).
 
 RAW pooled female shares:
-  ICS   : p̂ = 0.3808  (95% CI [0.3734, 0.3882]), n = 16470
-  Output: p̂ = 0.3463  (95% CI [0.3453, 0.3473]), n = 854366
+  ICS   : p̂ = 0.3816  (95% CI [0.3741, 0.3890]), n = 16446
+  Output: p̂ = 0.3363  (95% CI [0.3354, 0.3372]), n = 1126375
 
 Two-proportion z-test (RAW):
   H0: p_ICS = p_Output   vs   H1: p_ICS > p_Output
-  z = 9.224, p = 0 (H0: p1 = p2 vs H1: p1 > p2). Observed difference p1−p2 = +0.0345 [+0.0271, +0.0420] (95% CI, Wald, unpooled). Result is statistically significant at α=0.05; the estimated difference is positive.
+  z = 12.185, p = 0 (H0: p1 = p2 vs H1: p1 > p2). Observed difference p1−p2 = +0.0452 [+0.0378, +0.0527] (95% CI, Wald, unpooled). Result is statistically significant at α=0.05; the estimated difference is positive.
   Interpretation: This tests the overall female share across all observations. A significant result supports higher ICS share.
 
 
 — University level: paired analysis for Δ = (ICS − Output)
-  Descriptives: n = 155, mean(Δ) = 0.0095 (95% CI [-0.0105, 0.0296]), sd = 0.1271, Cohen's dz = 0.075
-  t-test (mean Δ > 0): t = 0.935, p = 0.176 → not significant at α=0.05 (mean Δ positive).
-  Wilcoxon (median Δ > 0): W = 7478.000, p = 0.00523 → significant (median Δ positive).
-  Sign test (P(Δ>0) > 0.5): positives = 88/155 (56.774%), p = 0.0539 → not significant.
+  Descriptives: n = 155, mean(Δ) = 0.0178 (95% CI [-0.0015, 0.0371]), sd = 0.1226, Cohen's dz = 0.145
+  t-test (mean Δ > 0): t = 1.809, p = 0.0362 → significant at α=0.05 (mean Δ positive).
+  Wilcoxon (median Δ > 0): W = 7911.000, p = 0.000429 → significant (median Δ positive).
+  Sign test (P(Δ>0) > 0.5): positives = 95/155 (61.290%), p = 0.00307 → significant.
   Interpretation: Positive, significant results indicate universities tend to have higher female shares in ICS than in Outputs.
 
 
 — Unit of Assessment (UoA) level: paired analysis for Δ = (ICS − Output)
-  Descriptives: n = 34, mean(Δ) = 0.0218 (95% CI [0.0024, 0.0413]), sd = 0.0580, Cohen's dz = 0.377
-  t-test (mean Δ > 0): t = 2.197, p = 0.0176 → significant at α=0.05 (mean Δ positive).
-  Wilcoxon (median Δ > 0): W = 411.000, p = 0.0263 → significant (median Δ positive).
-  Sign test (P(Δ>0) > 0.5): positives = 20/34 (58.824%), p = 0.196 → not significant.
+  Descriptives: n = 34, mean(Δ) = 0.0238 (95% CI [0.0048, 0.0427]), sd = 0.0563, Cohen's dz = 0.422
+  t-test (mean Δ > 0): t = 2.461, p = 0.00962 → significant at α=0.05 (mean Δ positive).
+  Wilcoxon (median Δ > 0): W = 422.000, p = 0.0164 → significant (median Δ positive).
+  Sign test (P(Δ>0) > 0.5): positives = 21/34 (61.765%), p = 0.115 → not significant.
   Interpretation: Positive, significant results indicate disciplines (UoAs) tend to have higher female shares in ICS.
 
 
 — Institution × UoA level: paired analysis for Δ = (ICS − Output)
-  Descriptives: n = 1833, mean(Δ) = 0.0082 (95% CI [-0.0032, 0.0196]), sd = 0.2485, Cohen's dz = 0.033
-  t-test (mean Δ > 0): t = 1.416, p = 0.0784 → not significant at α=0.05 (mean Δ positive).
-  Wilcoxon (median Δ > 0): W = 818008.500, p = 0.445 → not significant (median Δ zero).
-  Sign test (P(Δ>0) > 0.5): positives = 890/1805 (49.307%), p = 0.73 → not significant.
+  Descriptives: n = 1847, mean(Δ) = 0.0104 (95% CI [-0.0007, 0.0216]), sd = 0.2454, Cohen's dz = 0.043
+  t-test (mean Δ > 0): t = 1.829, p = 0.0338 → significant at α=0.05 (mean Δ positive).
+  Wilcoxon (median Δ > 0): W = 851871.000, p = 0.202 → not significant (median Δ positive).
+  Sign test (P(Δ>0) > 0.5): positives = 927/1825 (50.795%), p = 0.256 → not significant.
   Interpretation: At the cell level, a significant positive Δ indicates the tendency persists at finer granularity.
 
 RECAP:

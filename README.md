@@ -55,7 +55,7 @@ The repository operationalises this with:
 - `src/step08_build_statistics.py`
   - Rebuilds descriptive/inference report + summary LaTeX tables.
 - `src/step09_evaluate_thematic_indicators.py`
-  - Cross-method thematic comparison across Regex / GPT-5-mini / GPT-5.1 / GPT-5.4.
+  - Cross-method thematic comparison across Regex / GPT-5-mini / GPT-5.1 / GPT-5.4 / GPT-5.5.
   - Produces `supplementary_figure_1`, `supplementary_figure_4`, and agreement/coverage tables.
 - `src/step10_analyze_ics_text_gender.py`
   - Word-level association analysis for ICS text vs case-level female share outcome.
@@ -92,7 +92,7 @@ Step01 can generate thematic indicator flags from ICS text and cache results in:
 Cache keys are deterministic hashes of:
 - prompt version,
 - model,
-- normalized ICS text.
+- normalized ICS text from all five REF case-study fields: summary, underpinning research, references, impact details, and corroborating sources.
 
 ## 4. Environment Setup
 
@@ -117,10 +117,13 @@ If parquet read/write fails, ensure `pyarrow` is installed (already listed in re
 ### 4.3 Configuration
 Runtime configuration is controlled by `pipeline.yaml`.
 Key defaults include:
-- OpenAI model: `gpt-5.4`
+- OpenAI model: `gpt-5.5`
 - OpenAI prompt version: `v2`
 - OpenAI service tier: `flex`
 - thematic batch size: `12`
+- staff extraction batch size: `8`
+- staff extraction retry budget: `5` retries per transient OpenAI request
+- persistent staff extraction failures are recorded as blank/NaN counts with audit status, not treated as zero people
 - step02 PDF cache: enabled, directory `data/cache/ref_pdfs/`
 
 ## 5. Step-by-Step Pipeline Map
@@ -143,8 +146,8 @@ Key defaults include:
 ### 6.1 Full refresh (uses external services)
 Use when you explicitly want to refresh data/classifications from external sources:
 ```bash
-python -m src.step01_make_enhanced_data --without-llm --force
-python -m src.step02_make_ref_staff --with-llm
+python -m src.step01_make_enhanced_data --prepare-source-only
+python -m src.step02_make_ref_staff --input data/source/raw_ref_ics_data.xlsx --with-llm
 python -m src.step01_make_enhanced_data --with-llm --force
 python -m src.step03_get_dimensions_research_outputs --force
 python -m src.step04_make_figure_one
@@ -152,14 +155,20 @@ python -m src.step05_build_regression_models
 python -m src.step06_make_figure_two
 python -m src.step07_make_table_one
 python -m src.step08_build_statistics
-python -m src.step09_evaluate_thematic_indicators --model-mini gpt-5-nano --prompt-mini v2 --model-51 gpt-5.1 --prompt-51 v2 --model-54 gpt-5.4 --prompt-54 v2
+python -m src.step09_evaluate_thematic_indicators --model-mini gpt-5-nano --prompt-mini v2 --model-51 gpt-5.1 --prompt-51 v2 --model-54 gpt-5.4 --prompt-54 v2 --model-55 gpt-5.5 --prompt-55 v2
 python -m src.step10_analyze_ics_text_gender
 ```
+
+For a one-command destructive rebuild from scratch, use:
+```bash
+./rerun_pipeline.sh --mode rebuild --i-understand-this-deletes-data
+```
+This deletes generated data/output directories, preserves `data/manual/` and `keys/`, then re-downloads/rebuilds all external data and OpenAI classifications.
 
 ### 6.2 Full rerun with no new API calls (local snapshot only)
 Use when journal reproducibility requires regeneration from frozen local data/cache:
 ```bash
-cd ~/Dropbox/ics_work/ref_gender && REF_SKIP_MANIFEST=1 PYTHONUNBUFFERED=1 bash -lc 'set -euo pipefail; ENH_PATH="$( [ -f data/analysis/enhanced_ref_data.parquet ] && echo data/analysis/enhanced_ref_data.parquet || { [ -f data/analysis/enhanced_ref_data.csv ] && echo data/analysis/enhanced_ref_data.csv || true; } )"; [ -n "$ENH_PATH" ] || { echo "Missing existing enhanced_ref_data in data/analysis"; exit 1; }; printf "REF impact case study identifier\n" > /tmp/ref_gender_empty_ids.csv; python -m src.step01_make_enhanced_data --with-llm --output "$ENH_PATH"; python -m src.step02_make_ref_staff --without-llm --input /tmp/ref_gender_empty_ids.csv --out-dir /tmp/ref_gender_step02_noapi; python -m src.step03_get_dimensions_research_outputs --skip-api; python -m src.step04_make_figure_one; python -m src.step05_build_regression_models; python -m src.step06_make_figure_two; python -m src.step07_make_table_one; python -m src.step08_build_statistics; python -m src.step09_evaluate_thematic_indicators --model-mini gpt-5-nano --prompt-mini v2 --model-51 gpt-5.1 --prompt-51 v2 --model-54 gpt-5.4 --prompt-54 v2; python -m src.step10_analyze_ics_text_gender'
+cd ~/Dropbox/ics_work/ref_gender && REF_SKIP_MANIFEST=1 PYTHONUNBUFFERED=1 bash -lc 'set -euo pipefail; ENH_PATH="$( [ -f data/analysis/enhanced_ref_data.parquet ] && echo data/analysis/enhanced_ref_data.parquet || { [ -f data/analysis/enhanced_ref_data.csv ] && echo data/analysis/enhanced_ref_data.csv || true; } )"; [ -n "$ENH_PATH" ] || { echo "Missing existing enhanced_ref_data in data/analysis"; exit 1; }; printf "REF impact case study identifier\n" > /tmp/ref_gender_empty_ids.csv; python -m src.step01_make_enhanced_data --with-llm --output "$ENH_PATH"; python -m src.step02_make_ref_staff --without-llm --input /tmp/ref_gender_empty_ids.csv --out-dir /tmp/ref_gender_step02_noapi; python -m src.step03_get_dimensions_research_outputs --skip-api; python -m src.step04_make_figure_one; python -m src.step05_build_regression_models; python -m src.step06_make_figure_two; python -m src.step07_make_table_one; python -m src.step08_build_statistics; python -m src.step09_evaluate_thematic_indicators --model-mini gpt-5-nano --prompt-mini v2 --model-51 gpt-5.1 --prompt-51 v2 --model-54 gpt-5.4 --prompt-54 v2 --model-55 gpt-5.5 --prompt-55 v2; python -m src.step10_analyze_ics_text_gender'
 ```
 
 Notes:
@@ -175,22 +184,24 @@ python -m src.step05_build_regression_models
 python -m src.step06_make_figure_two
 python -m src.step07_make_table_one
 python -m src.step08_build_statistics
-python -m src.step09_evaluate_thematic_indicators --model-mini gpt-5-nano --prompt-mini v2 --model-51 gpt-5.1 --prompt-51 v2 --model-54 gpt-5.4 --prompt-54 v2
+python -m src.step09_evaluate_thematic_indicators --model-mini gpt-5-nano --prompt-mini v2 --model-51 gpt-5.1 --prompt-51 v2 --model-54 gpt-5.4 --prompt-54 v2 --model-55 gpt-5.5 --prompt-55 v2
 python -m src.step10_analyze_ics_text_gender
 ```
 
 ## 7. Thematic Indicator Model Slices
-Step09 expects four method families:
+Step09 expects five method families:
 - Regex (`regex_*`)
 - GPT-5-mini defaults (configured as `gpt-5-nano` + prompt `v2`)
 - GPT-5.1 (`v2`)
 - GPT-5.4 (`v2`)
+- GPT-5.5 (`v2`, primary)
 
 If cache slices are incomplete, backfill per model:
 ```bash
 python -m src.step01_make_enhanced_data --backfill-model gpt-5-nano --backfill-prompt-version v2 --backfill-service-tier flex --backfill-batch-size 12 --backfill-prompt-cache-key thematic_indicators_v2
 python -m src.step01_make_enhanced_data --backfill-model gpt-5.1   --backfill-prompt-version v2 --backfill-service-tier flex --backfill-batch-size 12 --backfill-prompt-cache-key thematic_indicators_v2
 python -m src.step01_make_enhanced_data --backfill-model gpt-5.4   --backfill-prompt-version v2 --backfill-service-tier flex --backfill-batch-size 12 --backfill-prompt-cache-key thematic_indicators_v2
+python -m src.step01_make_enhanced_data --backfill-model gpt-5.5   --backfill-prompt-version v2 --backfill-service-tier flex --backfill-batch-size 12 --backfill-prompt-cache-key thematic_indicators_v2
 ```
 Then rebuild enhanced data:
 ```bash
@@ -228,13 +239,13 @@ python -m src.step01_make_enhanced_data --with-llm --force
 ## 9. Validation and QA Checks
 - Schema validation for enhanced/output tables (`src/pipeline_schema.py`).
 - Drift checks with configurable thresholds (`pipeline.yaml` -> `drift_checks`).
-- Step06 enforces GPT-5.4 thematic indicator availability for Figure 2.
+- Step06 enforces GPT-5.5 thematic indicator availability for Figure 2.
 - Step09 performs strict method-coverage checks and fails fast on missing/disabled/error/parse_error statuses.
 
 ## 10. Determinism and Caching
 - LLM thematic cache keys are deterministic (`prompt_version + model + normalized text`).
 - Step09 adjudication sample uses fixed default random seed (`42`).
-- Manifest logging has been intentionally disabled (compatibility shim in `src/pipeline_manifest.py`).
+- Manifest logging writes a CSV unless `REF_SKIP_MANIFEST=1`; `rerun_pipeline.sh` sets that by default.
 
 ## 11. License
 GNU GPLv3. See `LICENSE`.

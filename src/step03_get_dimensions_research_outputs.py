@@ -50,7 +50,13 @@ def _normalise_doi(value: Any) -> str:
 def _normalise_isbn(value: Any) -> str:
     if value is None or (isinstance(value, float) and pd.isna(value)):
         return ""
-    keep = "".join(ch for ch in str(value) if ch.isalnum())
+    if isinstance(value, (int, np.integer)):
+        raw = str(value)
+    elif isinstance(value, (float, np.floating)) and float(value).is_integer():
+        raw = str(int(value))
+    else:
+        raw = str(value)
+    keep = "".join(ch for ch in raw if ch.isalnum())
     return keep.lower()
 
 
@@ -70,6 +76,33 @@ def _parse_authors(value: Any) -> list[dict[str, Any]]:
         except Exception:  # noqa: BLE001
             continue
     return []
+
+
+def _json_storage_value(value: Any) -> str:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return ""
+    if isinstance(value, (list, dict)):
+        return json.dumps(value, ensure_ascii=False, sort_keys=True)
+    raw = str(value).strip()
+    if not raw or raw.lower() in {"nan", "none"}:
+        return ""
+    return raw
+
+
+def _normalise_complex_output_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Store nested Dimensions fields as JSON strings.
+
+    PyArrow tries to infer nested schemas for object columns. Dimensions author
+    dicts are not type-stable across records, so serialising these columns keeps
+    the parquet/CSV outputs deterministic without changing the numeric analysis
+    columns used downstream.
+    """
+    df = df.copy()
+    for col in ("authors", "category_for_2020", "author_forenames", "author_genders"):
+        if col in df.columns:
+            df[col] = df[col].map(_json_storage_value).astype("string")
+    return df
 
 
 def _map_gender(label: str) -> str:
@@ -129,6 +162,19 @@ def _infer_gender_list(forenames: list[str], detector) -> list[str]:
             out.append("unknown")
             continue
         out.append(_infer_gender_with_fallback(first, detector))
+    return out
+
+
+def _infer_gender_list_cached(forenames: list[str], detector, cache: dict[str, str]) -> list[str]:
+    out = []
+    for name in forenames:
+        first = str(name).strip().split()[0] if str(name).strip() else ""
+        if not first:
+            out.append("unknown")
+            continue
+        if first not in cache:
+            cache[first] = _infer_gender_with_fallback(first, detector)
+        out.append(cache[first])
     return out
 
 
@@ -295,53 +341,75 @@ def _validate_outputs_pair_contract(any_df: pd.DataFrame, positive_df: pd.DataFr
         raise ValueError("Positive outputs contains REF2ID values not present in any outputs.")
 
 
+def _first_names_from_authors(authors: list[dict[str, Any]]) -> list[str]:
+    return [str(a.get("first_name", "")).strip() for a in authors if str(a.get("first_name", "")).strip()]
+
+
+def _dimensions_lookup(dim_df: pd.DataFrame, key_col: str, suffix: str) -> pd.DataFrame:
+    value_cols = [col for col in ("authors", "category_for_2020", "year", "doi", "isbn") if col in dim_df.columns]
+    if key_col not in dim_df.columns:
+        return pd.DataFrame(columns=[key_col, f"_dim_{suffix}_matched"])
+
+    lookup = (
+        dim_df.loc[dim_df[key_col] != "", [key_col, *value_cols]]
+        .drop_duplicates(key_col, keep="first")
+        .copy()
+    )
+    lookup[f"_dim_{suffix}_matched"] = True
+    return lookup.rename(columns={col: f"{col}_{suffix}" for col in value_cols})
+
+
+def _selected_dimension_series(matched: pd.DataFrame, field: str, has_doi_match: pd.Series) -> pd.Series:
+    doi_col = f"{field}_doi"
+    isbn_col = f"{field}_isbn"
+    doi_values = matched[doi_col] if doi_col in matched.columns else pd.Series(np.nan, index=matched.index)
+    isbn_values = matched[isbn_col] if isbn_col in matched.columns else pd.Series(np.nan, index=matched.index)
+    return doi_values.where(has_doi_match, isbn_values)
+
+
 def _assemble_outputs_with_authors(raw_outputs_path: Path, dim_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     raw = pd.read_excel(raw_outputs_path, skiprows=4)
     raw = raw.copy()
     raw["doi_norm"] = raw["DOI"].map(_normalise_doi)
     raw["isbn_norm"] = raw["ISBN"].map(_normalise_isbn)
 
-    dim_by_doi = dim_df[dim_df["doi_norm"] != ""].drop_duplicates("doi_norm", keep="first").set_index("doi_norm")
-    dim_by_isbn = dim_df[dim_df["isbn_norm"] != ""].drop_duplicates("isbn_norm", keep="first").set_index("isbn_norm")
+    matched = raw[["doi_norm", "isbn_norm"]].copy()
+    matched["_raw_order"] = np.arange(len(raw))
+    matched = matched.merge(_dimensions_lookup(dim_df, "doi_norm", "doi"), on="doi_norm", how="left")
+    matched = matched.merge(_dimensions_lookup(dim_df, "isbn_norm", "isbn"), on="isbn_norm", how="left")
+    matched = matched.sort_values("_raw_order").reset_index(drop=True)
 
     detector = _build_gender_detector()
+    gender_cache: dict[str, str] = {}
 
-    author_records: list[dict[str, Any]] = []
-    for idx, row in raw.iterrows():
-        dim_row = None
-        doi_key = row.get("doi_norm", "")
-        isbn_key = row.get("isbn_norm", "")
-        if doi_key and doi_key in dim_by_doi.index:
-            dim_row = dim_by_doi.loc[doi_key]
-        elif isbn_key and isbn_key in dim_by_isbn.index:
-            dim_row = dim_by_isbn.loc[isbn_key]
+    has_doi_match = matched["_dim_doi_matched"].eq(True)
+    has_any_match = has_doi_match | matched["_dim_isbn_matched"].eq(True)
+    selected_authors = _selected_dimension_series(matched, "authors", has_doi_match)
+    parsed_authors = selected_authors.map(_parse_authors)
+    forenames = parsed_authors.map(_first_names_from_authors)
+    genders = forenames.map(lambda names: _infer_gender_list_cached(names, detector, gender_cache))
 
-        authors = _parse_authors(dim_row["authors"]) if dim_row is not None and "authors" in dim_row else []
-        forenames = [str(a.get("first_name", "")).strip() for a in authors if str(a.get("first_name", "")).strip()]
-        genders = _infer_gender_list(forenames, detector)
-        author_records.append(
-            {
-                "authors": authors if authors else np.nan,
-                "category_for_2020": dim_row.get("category_for_2020", np.nan) if dim_row is not None else np.nan,
-                "year": dim_row.get("year", np.nan) if dim_row is not None else np.nan,
-                "doi": dim_row.get("doi", row.get("DOI", np.nan)) if dim_row is not None else row.get("DOI", np.nan),
-                "isbn": dim_row.get("isbn", row.get("ISBN", np.nan)) if dim_row is not None else row.get("ISBN", np.nan),
-                "authors_count": len(forenames),
-                "author_forenames": forenames,
-                "author_genders": genders,
-                "number_male": int(sum(1 for g in genders if g == "male")),
-                "number_female": int(sum(1 for g in genders if g == "female")),
-                "number_unknown": int(sum(1 for g in genders if g == "unknown")),
-                "number_people": int(len(genders)),
-            }
-        )
-
-    enrich = pd.DataFrame(author_records)
+    enrich = pd.DataFrame(
+        {
+            "authors": parsed_authors.map(lambda authors: authors if authors else np.nan),
+            "category_for_2020": _selected_dimension_series(matched, "category_for_2020", has_doi_match),
+            "year": _selected_dimension_series(matched, "year", has_doi_match),
+            "doi": _selected_dimension_series(matched, "doi", has_doi_match).where(has_any_match, raw["DOI"].reset_index(drop=True)),
+            "isbn": _selected_dimension_series(matched, "isbn", has_doi_match).where(has_any_match, raw["ISBN"].reset_index(drop=True)),
+            "authors_count": forenames.map(len).astype(int),
+            "author_forenames": forenames,
+            "author_genders": genders,
+            "number_male": genders.map(lambda values: int(sum(1 for g in values if g == "male"))),
+            "number_female": genders.map(lambda values: int(sum(1 for g in values if g == "female"))),
+            "number_unknown": genders.map(lambda values: int(sum(1 for g in values if g == "unknown"))),
+            "number_people": genders.map(len).astype(int),
+        }
+    )
     merged = pd.concat([raw.reset_index(drop=True), enrich], axis=1)
 
     any_authors = merged[merged["number_people"] >= 0].copy()
     positive_authors = merged[merged["number_people"] > 0].copy()
-    return any_authors, positive_authors
+    return _normalise_complex_output_columns(any_authors), _normalise_complex_output_columns(positive_authors)
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -4,6 +4,7 @@ import json
 import re
 import shutil
 import sys
+import time
 import unicodedata
 import warnings
 from datetime import datetime, timezone
@@ -26,6 +27,7 @@ try:  # pragma: no cover
     from .pipeline_manifest import append_manifest_row
     from .pipeline_paths import PipelinePaths, ensure_core_dirs
     from .pipeline_schema import validate_enhanced_ref_data
+    from .openai_batch import OpenAIBatchPending, create_or_retrieve_batch, read_jsonl
 except ImportError:  # pragma: no cover
     from pipeline_config import load_config_and_paths
     from pipeline_drift import apply_enhanced_drift_checks
@@ -33,6 +35,7 @@ except ImportError:  # pragma: no cover
     from pipeline_manifest import append_manifest_row
     from pipeline_paths import PipelinePaths, ensure_core_dirs
     from pipeline_schema import validate_enhanced_ref_data
+    from openai_batch import OpenAIBatchPending, create_or_retrieve_batch, read_jsonl
 
 
 # ===============================
@@ -46,6 +49,160 @@ def log_row_count(func):
         print(f"Number of rows after {func.__name__}: {len(result)}")
         return result
     return wrapper
+
+
+def _response_output_text(resp: Any) -> str:
+    """
+    Extract visible text from an OpenAI Responses API object without falling
+    back to the whole response repr, which is not model output.
+    """
+    if isinstance(resp, str):
+        return resp
+
+    direct = getattr(resp, "output_text", None)
+    if isinstance(direct, str) and direct.strip():
+        return direct
+
+    def _to_plain(obj: Any) -> Any:
+        if hasattr(obj, "model_dump"):
+            try:
+                return obj.model_dump(mode="python")
+            except Exception:  # noqa: BLE001
+                return obj
+        return obj
+
+    def _collect(obj: Any, *, depth: int = 0) -> list[str]:
+        if obj is None or depth > 8:
+            return []
+        obj = _to_plain(obj)
+        if isinstance(obj, str):
+            return [obj] if obj.strip() else []
+        if isinstance(obj, list | tuple):
+            out: list[str] = []
+            for item in obj:
+                out.extend(_collect(item, depth=depth + 1))
+            return out
+        if not isinstance(obj, dict):
+            return []
+
+        out = []
+        if isinstance(obj.get("output_text"), str):
+            out.append(obj["output_text"])
+        if obj.get("type") == "output_text" and isinstance(obj.get("text"), str):
+            out.append(obj["text"])
+        parsed = obj.get("parsed")
+        if parsed:
+            out.append(json.dumps(parsed, ensure_ascii=False))
+        for key in ("output", "content", "message", "messages"):
+            if key in obj:
+                out.extend(_collect(obj[key], depth=depth + 1))
+        return out
+
+    return "".join(_collect(resp)).strip()
+
+
+def _response_diagnostic(resp: Any) -> str:
+    parts: list[str] = []
+    for attr in ("status", "incomplete_details", "error"):
+        value = getattr(resp, attr, None)
+        if value:
+            parts.append(f"{attr}={value}")
+    return "; ".join(parts)
+
+
+def _loads_json_payload(raw_text: str) -> Any:
+    raw_text = str(raw_text or "").strip()
+    if not raw_text:
+        raise ValueError("empty_response")
+
+    candidates = [raw_text]
+    fence = re.search(r"```(?:json)?\s*(.*?)```", raw_text, flags=re.IGNORECASE | re.DOTALL)
+    if fence:
+        candidates.insert(0, fence.group(1).strip())
+
+    for candidate in candidates:
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            pass
+
+    decoder = json.JSONDecoder()
+    for candidate in candidates:
+        for idx, char in enumerate(candidate):
+            if char not in "{[":
+                continue
+            try:
+                parsed, _ = decoder.raw_decode(candidate[idx:])
+                return parsed
+            except json.JSONDecodeError:
+                continue
+    raise ValueError("json_parse_failed")
+
+
+def _parse_thematic_single_flags(raw_text: str, ordered_groups: list[str]) -> tuple[dict[str, int], str, str]:
+    try:
+        parsed = _loads_json_payload(raw_text)
+    except ValueError as exc:
+        return {g: 0 for g in ordered_groups}, "parse_error", str(exc)
+
+    if isinstance(parsed, dict) and isinstance(parsed.get("results"), list) and parsed["results"]:
+        first = parsed["results"][0]
+        if isinstance(first, dict):
+            parsed = first
+
+    if not isinstance(parsed, dict):
+        return {g: 0 for g in ordered_groups}, "parse_error", "json_object_missing"
+
+    missing = [g for g in ordered_groups if g not in parsed]
+    if missing:
+        return {g: 0 for g in ordered_groups}, "parse_error", f"indicator_fields_missing:{','.join(missing)}"
+
+    return {g: int(bool(parsed.get(g, False))) for g in ordered_groups}, "ok", ""
+
+
+def _parse_thematic_batch_flags(
+    raw_text: str,
+    ordered_groups: list[str],
+    expected_ids: list[str] | None = None,
+) -> tuple[dict[str, dict[str, int]], str, str]:
+    try:
+        parsed = _loads_json_payload(raw_text)
+    except ValueError as exc:
+        return {}, "parse_error", str(exc)
+
+    expected_ids = expected_ids or []
+    results: Any
+    if isinstance(parsed, dict) and isinstance(parsed.get("results"), list):
+        results = parsed["results"]
+    elif isinstance(parsed, list):
+        results = parsed
+    elif isinstance(parsed, dict) and ("id" in parsed or len(expected_ids) == 1):
+        results = [parsed]
+    else:
+        return {}, "parse_error", "batch_results_missing"
+
+    out: dict[str, dict[str, int]] = {}
+    malformed_items = 0
+    for item in results:
+        if not isinstance(item, dict):
+            malformed_items += 1
+            continue
+        item_id = str(item.get("id", "")).strip()
+        if not item_id and len(expected_ids) == 1:
+            item_id = expected_ids[0]
+        if not item_id:
+            malformed_items += 1
+            continue
+        if any(g not in item for g in ordered_groups):
+            malformed_items += 1
+            continue
+        out[item_id] = {g: int(bool(item.get(g, False))) for g in ordered_groups}
+
+    if not out:
+        return {}, "parse_error", "batch_results_missing"
+    if malformed_items and len(out) < len(results):
+        return out, "parse_error", "malformed_batch_items"
+    return out, "ok", ""
 
 
 def mirror_legacy_raw_to_source(raw_path: Path, legacy_raw_path: Path) -> None:
@@ -416,14 +573,70 @@ def load_dept_vars(df: pd.DataFrame, edit_path: Path) -> pd.DataFrame:
     )
 
 
+STAFF_COUNT_COLUMNS = ["number_male", "number_female", "number_unknown", "number_people"]
+STAFF_METADATA_DEFAULTS = {
+    "staff_block": pd.NA,
+    "extraction_status": "not_run",
+    "staff_extraction_status": "unknown",
+    "staff_extraction_error": "",
+    "names": "[]",
+    "given_names": "[]",
+    "roles": "[]",
+    "genders": "[]",
+}
+
+
 def get_ics_staff_rows(df: pd.DataFrame, ics_staff_rows_path: Path) -> pd.DataFrame:
     staff_path = Path(ics_staff_rows_path) / "ref_case_level.csv"
     if not staff_path.exists():
-        print(f"No staff rows data at {staff_path}; continuing without staff enrichment.")
-        return df
+        raise FileNotFoundError(
+            f"Missing staff enrichment file: {staff_path}. "
+            "Run step01 with --prepare-source-only, then run step02_make_ref_staff --with-llm, "
+            "then rerun step01 to build enhanced_ref_data."
+        )
     staff_rows = pd.read_csv(staff_path)
     print(f"Staff rows loaded: {len(staff_rows)}")
-    return pd.merge(df, staff_rows, how="left", on="REF impact case study identifier")
+    required_staff_cols = ["REF impact case study identifier", *STAFF_COUNT_COLUMNS]
+    missing_staff_cols = [c for c in required_staff_cols if c not in staff_rows.columns]
+    if missing_staff_cols:
+        raise ValueError(f"{staff_path} missing required staff columns: {missing_staff_cols}")
+
+    staff_enrichment_cols = [
+        c for c in [*STAFF_METADATA_DEFAULTS.keys(), *STAFF_COUNT_COLUMNS] if c in df.columns
+    ]
+    base = df.drop(columns=staff_enrichment_cols) if staff_enrichment_cols else df
+    merged = pd.merge(
+        base,
+        staff_rows,
+        how="left",
+        on="REF impact case study identifier",
+        validate="one_to_one",
+        indicator=True,
+    )
+
+    missing_rows = merged["_merge"].eq("left_only")
+    if bool(missing_rows.any()):
+        missing_ids = (
+            merged.loc[missing_rows, "REF impact case study identifier"].astype(str).head(20).tolist()
+        )
+        raise ValueError(
+            f"Staff enrichment file does not cover {int(missing_rows.sum())} case(s). "
+            f"First missing case IDs: {', '.join(missing_ids)}"
+        )
+    merged = merged.drop(columns=["_merge"])
+
+    for col in STAFF_COUNT_COLUMNS:
+        numeric = pd.to_numeric(merged[col], errors="coerce")
+        invalid = numeric.isna() & merged[col].notna()
+        if bool(invalid.any()):
+            raise ValueError(f"Staff enrichment column {col} contains non-numeric values.")
+        merged[col] = numeric
+    for col, default in STAFF_METADATA_DEFAULTS.items():
+        if col not in merged.columns:
+            merged[col] = default
+        elif col in {"extraction_status", "staff_extraction_status", "staff_extraction_error"}:
+            merged[col] = merged[col].fillna(default)
+    return merged
 
 
 def get_ics_grants(df: pd.DataFrame, ics_grants_path: Path) -> pd.DataFrame:
@@ -508,7 +721,7 @@ def get_thematic_indicators(
     df: pd.DataFrame,
     *,
     llm_enabled: bool = True,
-    model: str = "gpt-5.4",
+    model: str = "gpt-5.5",
     service_tier: str = "flex",
     prompt_version: str = "v2",
     llm_batch_size: int = 12,
@@ -517,6 +730,10 @@ def get_thematic_indicators(
     key_env_var: str = "OPENAI_API_KEY",
     key_path: str | Path | None = None,
     cache_path: str | Path = "./data/openai/categories.csv",
+    openai_processing_mode: str = "sync",
+    batch_wait: bool = False,
+    batch_poll_interval_seconds: float = 60.0,
+    batch_dir: str | Path | None = None,
 ) -> pd.DataFrame:
     """
     Add thematic indicator columns using regex and optionally an online LLM.
@@ -530,7 +747,13 @@ def get_thematic_indicators(
         - 'regex_g' : regex-based indicator (0/1)
         - 'llm_g'   : LLM-based indicator (0/1, cached in CSV)
     """
-    COLS = ["1. Summary of the impact", "4. Details of the impact"]
+    thematic_text_fields = [
+        "1. Summary of the impact",
+        "2. Underpinning research",
+        "3. References to the research",
+        "4. Details of the impact",
+        "5. Sources to corroborate the impact",
+    ]
 
     def _normalise_text(s: pd.Series) -> pd.Series:
         s = s.fillna("").astype(str)
@@ -539,7 +762,15 @@ def get_thematic_indicators(
         return s
 
     df = df.copy()
-    norm = _normalise_text(df[COLS[0]]) + " " + _normalise_text(df[COLS[1]])
+    missing_text_fields = [c for c in thematic_text_fields if c not in df.columns]
+    if missing_text_fields:
+        raise ValueError(f"Missing thematic text fields: {missing_text_fields}")
+    text_parts = []
+    for col in thematic_text_fields:
+        normalised_col = _normalise_text(df[col])
+        text_parts.append(normalised_col.map(lambda value, col=col: f"{col}: {value}" if value else ""))
+    norm = pd.concat(text_parts, axis=1).agg(" ".join, axis=1)
+    norm = norm.str.replace(r"\s+", " ", regex=True).str.strip()
     df["_impact_text_norm"] = norm
 
     HX = r"(?:\s|[-–—])?"
@@ -705,60 +936,14 @@ def get_thematic_indicators(
         }
 
     def _extract_json_flags(raw_text: str, ordered_groups: list[str]) -> tuple[dict[str, int], str, str]:
-        llm_status_local = "ok"
-        llm_error_local = ""
-        try:
-            parsed = json.loads(raw_text)
-        except json.JSONDecodeError:
-            start = raw_text.find("{")
-            end = raw_text.rfind("}")
-            if start != -1 and end != -1 and end > start:
-                try:
-                    parsed = json.loads(raw_text[start : end + 1])
-                except Exception:  # noqa: BLE001
-                    parsed = {}
-                    llm_status_local = "parse_error"
-                    llm_error_local = "json_parse_failed"
-            else:
-                parsed = {}
-                llm_status_local = "parse_error"
-                llm_error_local = "json_parse_failed"
-        return {g: int(bool(parsed.get(g, False))) for g in ordered_groups}, llm_status_local, llm_error_local
+        return _parse_thematic_single_flags(raw_text, ordered_groups)
 
-    def _extract_batch_flags(raw_text: str, ordered_groups: list[str]) -> tuple[dict[str, dict[str, int]], str, str]:
-        llm_status_local = "ok"
-        llm_error_local = ""
-        parsed: dict[str, Any] = {}
-        try:
-            parsed = json.loads(raw_text)
-        except json.JSONDecodeError:
-            start = raw_text.find("{")
-            end = raw_text.rfind("}")
-            if start != -1 and end != -1 and end > start:
-                try:
-                    parsed = json.loads(raw_text[start : end + 1])
-                except Exception:  # noqa: BLE001
-                    parsed = {}
-                    llm_status_local = "parse_error"
-                    llm_error_local = "json_parse_failed"
-            else:
-                parsed = {}
-                llm_status_local = "parse_error"
-                llm_error_local = "json_parse_failed"
-        out: dict[str, dict[str, int]] = {}
-        results = parsed.get("results", []) if isinstance(parsed, dict) else []
-        if isinstance(results, list):
-            for item in results:
-                if not isinstance(item, dict):
-                    continue
-                item_id = str(item.get("id", "")).strip()
-                if not item_id:
-                    continue
-                out[item_id] = {g: int(bool(item.get(g, False))) for g in ordered_groups}
-        if llm_status_local == "ok" and not out:
-            llm_status_local = "parse_error"
-            llm_error_local = "batch_results_missing"
-        return out, llm_status_local, llm_error_local
+    def _extract_batch_flags(
+        raw_text: str,
+        ordered_groups: list[str],
+        expected_ids: list[str] | None = None,
+    ) -> tuple[dict[str, dict[str, int]], str, str]:
+        return _parse_thematic_batch_flags(raw_text, ordered_groups, expected_ids=expected_ids)
 
     def _chunked(items: list[str], size: int) -> list[list[str]]:
         return [items[i : i + size] for i in range(0, len(items), size)]
@@ -770,6 +955,27 @@ def get_thematic_indicators(
         api_client: OpenAI,
         request_kwargs: dict[str, Any],
     ) -> tuple[Any, str, str]:
+        def _is_transient(exc: Exception) -> bool:
+            msg = str(exc).lower()
+            transient_markers = (
+                "timeout",
+                "temporar",
+                "connection",
+                "connect",
+                "disconnect",
+                "reset",
+                "upstream",
+                "no healthy upstream",
+                "rate limit",
+                "429",
+                "500",
+                "502",
+                "503",
+                "504",
+                "service unavailable",
+            )
+            return any(marker in msg for marker in transient_markers)
+
         candidates: list[dict[str, Any]] = [request_kwargs]
         has_cache_fields = any(k in request_kwargs for k in ("prompt_cache_key", "prompt_cache_retention"))
         has_schema = "text" in request_kwargs
@@ -798,12 +1004,26 @@ def get_thematic_indicators(
         final_kwargs: dict[str, Any] | None = None
         resp = None
         for candidate in deduped:
-            try:
-                resp = api_client.responses.create(**candidate)
-                final_kwargs = candidate
+            max_attempts = 5
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    resp = api_client.responses.create(**candidate)
+                    final_kwargs = candidate
+                    break
+                except Exception as exc:  # noqa: BLE001
+                    if _is_transient(exc) and attempt < max_attempts:
+                        sleep_for = min(60.0, 1.5 ** (attempt - 1))
+                        print(
+                            "Transient OpenAI thematic classification error; "
+                            f"retrying in {sleep_for:.1f}s ({attempt}/{max_attempts}): {exc}",
+                            file=sys.stderr,
+                        )
+                        time.sleep(sleep_for)
+                        continue
+                    errors.append(str(exc))
+                    break
+            if resp is not None:
                 break
-            except Exception as exc:  # noqa: BLE001
-                errors.append(str(exc))
         if resp is None or final_kwargs is None:
             raise RuntimeError(errors[-1] if errors else "responses_create_failed")
 
@@ -829,20 +1049,18 @@ def get_thematic_indicators(
         request_kwargs: dict[str, Any] = {
             "model": model,
             "input": prompt_input,
-            "max_output_tokens": max(512, 128 * int(item_count)) if structured else 256,
+            "max_output_tokens": max(2048, 384 * int(item_count)) if structured else 512,
             "service_tier": service_tier,
         }
         model_l = str(model).lower()
         # Use one consistent reasoning setting across GPT-5 models for comparability.
         if model_l.startswith("gpt-5"):
             request_kwargs["reasoning"] = {"effort": "low"}
-            request_kwargs["max_output_tokens"] = max(int(request_kwargs["max_output_tokens"]), 1536 if structured else 1024)
+            request_kwargs["max_output_tokens"] = max(int(request_kwargs["max_output_tokens"]), 8192 if structured else 2048)
         else:
             request_kwargs["temperature"] = 0.0
         if prompt_cache_key:
             request_kwargs["prompt_cache_key"] = str(prompt_cache_key)
-            if prompt_cache_retention:
-                request_kwargs["prompt_cache_retention"] = str(prompt_cache_retention)
         if structured:
             request_kwargs["text"] = {
                 "format": {
@@ -939,9 +1157,172 @@ def get_thematic_indicators(
                 }
             )
 
-    if llm_query_allowed and client is not None:
-        key_batches = _chunked(keys_to_query, size=effective_batch_size)
-        for ck_batch in tqdm(key_batches, desc=f"LLM thematic classification ({model}, {service_tier})", unit="batch"):
+    def _batch_groups(keys: list[str]) -> list[list[str]]:
+        grouped: list[list[str]] = []
+        current: list[str] = []
+        for ck in keys:
+            cached_status = str(cache_map.get(ck, {}).get("llm_status", "")).strip().lower()
+            force_single = cached_status in {"error", "parse_error"}
+            if force_single:
+                if current:
+                    grouped.append(current)
+                    current = []
+                grouped.append([ck])
+                continue
+            current.append(ck)
+            if len(current) >= effective_batch_size:
+                grouped.append(current)
+                current = []
+        if current:
+            grouped.append(current)
+        return grouped
+
+    def _run_openai_batch_thematic(batch_keys: list[str]) -> list[dict[str, Any]]:
+        out_rows: list[dict[str, Any]] = []
+        if not batch_keys:
+            return out_rows
+        root = Path(batch_dir) if batch_dir is not None else cache_path.parent / "batches"
+        root.mkdir(parents=True, exist_ok=True)
+        safe_model = re.sub(r"[^A-Za-z0-9._-]+", "_", str(model))
+        safe_prompt = re.sub(r"[^A-Za-z0-9._-]+", "_", str(prompt_version))
+        keys_digest = hashlib.sha256("\n".join(batch_keys).encode("utf-8")).hexdigest()[:16]
+        stem = f"thematic_{safe_model}_{safe_prompt}_{keys_digest}"
+        manifest_path = root / f"{stem}.manifest.json"
+        jsonl_path = root / f"{stem}.input.jsonl"
+        output_path = root / f"{stem}.output.jsonl"
+        error_path = root / f"{stem}.errors.jsonl"
+        index_path = root / f"{stem}.index.json"
+
+        custom_index: dict[str, list[dict[str, str]]] = {}
+        requests: list[dict[str, Any]] = []
+        for request_number, ck_group in enumerate(_batch_groups(batch_keys), start=1):
+            batch_items = [{"id": ck, "text": unique_texts[ck]} for ck in ck_group]
+            if use_structured_outputs:
+                prompt_input = _build_batch_prompt(base_instructions, batch_items)
+            else:
+                prompt_input = base_instructions + "\n\nTEXT:\n\"\"\"\n" + batch_items[0]["text"] + "\n\"\"\"\n"
+            body = _build_request_kwargs(prompt_input, len(batch_items), use_structured_outputs)
+            body.pop("service_tier", None)
+            custom_id = f"thematic-{request_number:06d}-{hashlib.sha256('|'.join(ck_group).encode('utf-8')).hexdigest()[:12]}"
+            custom_index[custom_id] = batch_items
+            requests.append(
+                {
+                    "custom_id": custom_id,
+                    "method": "POST",
+                    "url": "/v1/responses",
+                    "body": body,
+                }
+            )
+
+        if not index_path.exists():
+            index_path.write_text(json.dumps(custom_index, indent=2, sort_keys=True), encoding="utf-8")
+        else:
+            custom_index = json.loads(index_path.read_text(encoding="utf-8"))
+
+        state, manifest = create_or_retrieve_batch(
+            client,
+            manifest_path=manifest_path,
+            jsonl_path=jsonl_path,
+            output_path=output_path,
+            error_path=error_path,
+            endpoint="/v1/responses",
+            requests=requests,
+            metadata={
+                "project": "ref_gender",
+                "task": "thematic_classification",
+                "model": str(model),
+                "prompt_version": str(prompt_version),
+            },
+            wait=bool(batch_wait),
+            poll_interval_seconds=float(batch_poll_interval_seconds),
+        )
+        if state != "completed":
+            raise OpenAIBatchPending(
+                "OpenAI thematic batch is pending. "
+                f"batch_id={manifest.get('batch_id')} status={manifest.get('status')} "
+                f"manifest={manifest_path}. Re-run the same pipeline command later to collect it."
+            )
+
+        output_lines = read_jsonl(output_path)
+        seen_custom_ids: set[str] = set()
+        for line in output_lines:
+            custom_id = str(line.get("custom_id", ""))
+            seen_custom_ids.add(custom_id)
+            batch_items = custom_index.get(custom_id, [])
+            response = line.get("response") or {}
+            status_code = int(response.get("status_code") or 0)
+            request_error = line.get("error")
+            if request_error or status_code >= 400:
+                error_text = json.dumps(request_error or response.get("body") or response, ensure_ascii=False)
+                for item in batch_items:
+                    out_rows.append(
+                        {
+                            "cache_key": item["id"],
+                            "text": item["text"],
+                            "model": model,
+                            "prompt_version": prompt_version,
+                            "llm_status": "error",
+                            "llm_error": error_text,
+                            **{g: 0 for g in groups},
+                        }
+                    )
+                continue
+
+            raw = _response_output_text(response.get("body") or {})
+            if use_structured_outputs:
+                expected_ids = [item["id"] for item in batch_items]
+                parsed_batch, parse_status, parse_error = _extract_batch_flags(raw, groups, expected_ids=expected_ids)
+            else:
+                flags, parse_status, parse_error = _extract_json_flags(raw, groups)
+                parsed_batch = {batch_items[0]["id"]: flags} if batch_items else {}
+            for item in batch_items:
+                flags = parsed_batch.get(item["id"], {g: 0 for g in groups})
+                status = "ok_batch" if parse_status == "ok" and item["id"] in parsed_batch else "parse_error"
+                error = "" if status == "ok_batch" else parse_error or "missing_id_in_batch_response"
+                out_rows.append(
+                    {
+                        "cache_key": item["id"],
+                        "text": item["text"],
+                        "model": model,
+                        "prompt_version": prompt_version,
+                        "llm_status": status,
+                        "llm_error": error,
+                        **flags,
+                    }
+                )
+
+        missing_custom_ids = set(custom_index) - seen_custom_ids
+        for custom_id in sorted(missing_custom_ids):
+            for item in custom_index.get(custom_id, []):
+                out_rows.append(
+                    {
+                        "cache_key": item["id"],
+                        "text": item["text"],
+                        "model": model,
+                        "prompt_version": prompt_version,
+                        "llm_status": "error",
+                        "llm_error": "missing_batch_output_line",
+                        **{g: 0 for g in groups},
+                    }
+                )
+        return out_rows
+
+    if llm_query_allowed and client is not None and str(openai_processing_mode).strip().lower() == "batch":
+        new_cache_rows.extend(_run_openai_batch_thematic(keys_to_query))
+
+    if llm_query_allowed and client is not None and str(openai_processing_mode).strip().lower() != "batch":
+        force_single_item = False
+        consecutive_repaired_batch_parse_errors = 0
+        cursor = 0
+        pbar = tqdm(
+            total=len(keys_to_query),
+            desc=f"LLM thematic classification ({model}, {service_tier})",
+            unit="item",
+        )
+        while cursor < len(keys_to_query):
+            current_batch_size = 1 if force_single_item else effective_batch_size
+            ck_batch = keys_to_query[cursor : cursor + current_batch_size]
+            cursor += current_batch_size
             batch_items: list[dict[str, str]] = []
             for ck in ck_batch:
                 text = unique_texts[ck]
@@ -960,10 +1341,12 @@ def get_thematic_indicators(
                     continue
                 batch_items.append({"id": ck, "text": text})
             if not batch_items:
+                pbar.update(len(ck_batch))
                 continue
 
             batch_status = "ok"
             batch_error = ""
+            batch_parse_error = False
             batch_results: dict[str, dict[str, int]] = {}
             item_status_overrides: dict[str, tuple[str, str]] = {}
             try:
@@ -976,18 +1359,24 @@ def get_thematic_indicators(
                 resp, status_fallback, error_fallback = _responses_create_with_fallback(client, request_kwargs)
                 batch_status = status_fallback
                 batch_error = error_fallback
-                raw = getattr(resp, "output_text", str(resp)) or ""
+                raw = _response_output_text(resp)
+                response_detail = _response_diagnostic(resp)
                 if use_structured_outputs:
-                    parsed_batch, parse_status, parse_error = _extract_batch_flags(raw, groups)
+                    expected_ids = [item["id"] for item in batch_items]
+                    parsed_batch, parse_status, parse_error = _extract_batch_flags(raw, groups, expected_ids=expected_ids)
                     batch_results = parsed_batch
                 else:
                     # v1 compatibility path (single-item only due effective_batch_size=1)
                     parsed_single, parse_status, parse_error = _extract_json_flags(raw, groups)
                     batch_results = {batch_items[0]["id"]: parsed_single}
                 if parse_status != "ok":
+                    if response_detail:
+                        parse_error = "; ".join([p for p in (parse_error, response_detail) if p])
+                    batch_parse_error = True
                     batch_status = parse_status
                     batch_error = parse_error
-                    _log_llm_issue("BATCH", ck_batch[0], batch_status, batch_error)
+                    if len(batch_items) == 1:
+                        _log_llm_issue("BATCH", ck_batch[0], batch_status, batch_error)
 
                 # Repair partial/missing batch outputs by retrying only missing ids one-by-one.
                 if use_structured_outputs:
@@ -1001,8 +1390,17 @@ def get_thematic_indicators(
                             retry_prompt = _build_batch_prompt(base_instructions, [{"id": miss_id, "text": miss_text}])
                             retry_kwargs = _build_request_kwargs(retry_prompt, 1, True)
                             retry_resp, retry_fb_status, retry_fb_error = _responses_create_with_fallback(client, retry_kwargs)
-                            retry_raw = getattr(retry_resp, "output_text", str(retry_resp)) or ""
-                            retry_parsed, retry_parse_status, retry_parse_error = _extract_batch_flags(retry_raw, groups)
+                            retry_raw = _response_output_text(retry_resp)
+                            retry_detail = _response_diagnostic(retry_resp)
+                            retry_parsed, retry_parse_status, retry_parse_error = _extract_batch_flags(
+                                retry_raw,
+                                groups,
+                                expected_ids=[miss_id],
+                            )
+                            if retry_parse_status != "ok" and retry_detail:
+                                retry_parse_error = "; ".join(
+                                    [p for p in (retry_parse_error, retry_detail) if p]
+                                )
                             parsed_item = retry_parsed.get(miss_id)
                             # If single-item retry returns one item with missing/mismatched id,
                             # still accept it because this retry is for exactly one cache key.
@@ -1032,6 +1430,27 @@ def get_thematic_indicators(
                             warnings.warn(f"OpenAI retry failed for item {miss_id[:8]}...: {retry_exc}")
                             _log_llm_issue("RETRY", miss_id, retry_status, retry_error)
                         item_status_overrides[miss_id] = (retry_status, retry_error)
+
+                    unrepaired_ids = [
+                        item["id"]
+                        for item in batch_items
+                        if item["id"] not in batch_results
+                        or not str(item_status_overrides.get(item["id"], ("ok", ""))[0]).startswith("ok")
+                    ]
+                    if batch_parse_error and len(batch_items) > 1 and not unrepaired_ids:
+                        batch_status = status_fallback
+                        batch_error = error_fallback
+                        consecutive_repaired_batch_parse_errors += 1
+                        if consecutive_repaired_batch_parse_errors >= 2 and not force_single_item:
+                            force_single_item = True
+                            print(
+                                "[LLM BATCH] Structured batch responses are not parseable, "
+                                "but single-item repair is working; switching remaining "
+                                f"{len(keys_to_query) - cursor} items to single-item mode.",
+                                file=sys.stderr,
+                            )
+                    elif batch_parse_error:
+                        consecutive_repaired_batch_parse_errors = 0
             except Exception as exc:  # noqa: BLE001
                 batch_status = "error"
                 batch_error = str(exc)
@@ -1063,6 +1482,8 @@ def get_thematic_indicators(
                         **flags,
                     }
                 )
+            pbar.update(len(ck_batch))
+        pbar.close()
 
     if new_cache_rows:
         new_df = pd.DataFrame(new_cache_rows)
@@ -1080,6 +1501,19 @@ def get_thematic_indicators(
             for row in cache_df.itertuples(index=False)
             if getattr(row, "cache_key", "")
         }
+        if llm_query_allowed:
+            status_lower = new_df["llm_status"].fillna("").astype(str).str.strip().str.lower()
+            bad_mask = status_lower.isin({"error", "parse_error"})
+            if bad_mask.any():
+                bad_counts = status_lower[bad_mask].value_counts(dropna=False).to_dict()
+                sample = new_df.loc[bad_mask, ["cache_key", "llm_status", "llm_error"]].head(5)
+                raise RuntimeError(
+                    "OpenAI thematic classification did not complete cleanly; "
+                    f"bad statuses in new cache rows: {bad_counts}. "
+                    f"Cache was written to {cache_path} for audit/retry. "
+                    "Sample failures:\n"
+                    f"{sample.to_string(index=False)}"
+                )
 
     for idx, row in df.iterrows():
         ck = row["_cache_key"]
@@ -1115,6 +1549,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--output", type=str, default=None, help="Override output CSV path.")
     parser.add_argument("--force", action="store_true", help="Overwrite output CSV if it exists.")
     parser.add_argument("--skip-downloads", action="store_true", help="Skip REF download steps.")
+    parser.add_argument(
+        "--prepare-source-only",
+        action="store_true",
+        help="Download/prepare REF source workbooks only; do not build enhanced_ref_data.",
+    )
     llm_group = parser.add_mutually_exclusive_group()
     llm_group.add_argument("--with-llm", action="store_true", help="Enable LLM thematic indicators.")
     llm_group.add_argument("--without-llm", action="store_true", help="Disable LLM thematic indicators.")
@@ -1184,7 +1623,8 @@ def main(argv: list[str] | None = None) -> int:
     legacy_zip_path = paths.legacy_final_dir / "enhanced_ref_data.zip"
 
     backfill_mode = bool(args.backfill_model)
-    if output_path.exists() and not args.force and not backfill_mode:
+    prepare_source_only = bool(args.prepare_source_only)
+    if output_path.exists() and not args.force and not backfill_mode and not prepare_source_only:
         print(f"Output already exists: {output_path}. Use --force to overwrite.")
         return 0
 
@@ -1192,9 +1632,11 @@ def main(argv: list[str] | None = None) -> int:
     manifest_status = "success"
     manifest_notes = ""
     row_counts: dict[str, Any] = {}
+    exit_code = 0
     params = {
         "llm_mode": "with_llm" if args.with_llm else ("without_llm" if args.without_llm else "config_default"),
         "skip_downloads": args.skip_downloads,
+        "prepare_source_only": args.prepare_source_only,
         "output": str(output_path),
         "backfill_model": args.backfill_model,
         "backfill_prompt_version": args.backfill_prompt_version,
@@ -1224,6 +1666,9 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         openai_cfg = config.get("openai", {})
+        openai_processing_mode = str(openai_cfg.get("processing_mode", "sync")).strip().lower()
+        batch_wait = bool(openai_cfg.get("batch_wait", False))
+        batch_poll_interval_seconds = float(openai_cfg.get("batch_poll_interval_seconds", 60))
 
         if backfill_mode:
             print(f"Backfilling thematic cache for model={args.backfill_model} ...")
@@ -1275,6 +1720,10 @@ def main(argv: list[str] | None = None) -> int:
                 key_env_var=str(openai_cfg.get("key_env_var", "OPENAI_API_KEY")),
                 key_path=paths.project_root / str(openai_cfg.get("key_file", "keys/OPENAI_API_KEY")),
                 cache_path=paths.data_dir / "openai" / "categories.csv",
+                openai_processing_mode=openai_processing_mode,
+                batch_wait=batch_wait,
+                batch_poll_interval_seconds=batch_poll_interval_seconds,
+                batch_dir=paths.data_dir / "openai" / "batches",
             )
             row_counts = {"backfill_source_rows": int(len(df_backfill))}
             params.update(
@@ -1309,6 +1758,25 @@ def main(argv: list[str] | None = None) -> int:
             if not input_paths["raw_outputs"].exists():
                 get_output_data(raw_path, session=session, timeout_seconds=timeout_seconds)
 
+        if prepare_source_only:
+            raw_files = [
+                input_paths["raw_environment"],
+                input_paths["raw_results"],
+                input_paths["raw_ics"],
+                input_paths["raw_ics_tags"],
+                input_paths["raw_outputs"],
+            ]
+            missing_raw = [str(p) for p in raw_files if not Path(p).exists()]
+            if missing_raw:
+                raise FileNotFoundError(
+                    "REF source preparation did not produce all required workbooks: "
+                    + ", ".join(missing_raw)
+                )
+            row_counts = {"prepared_source_files": len(raw_files)}
+            params["mode"] = "prepare_source_only"
+            print(f"Prepared REF source workbooks in: {raw_path}")
+            return 0
+
         clean_dep_level(raw_path, edit_path)
         df = clean_ics_level(raw_path, edit_path)
         df = load_dept_vars(df, edit_path)
@@ -1326,7 +1794,7 @@ def main(argv: list[str] | None = None) -> int:
         df = get_thematic_indicators(
             df,
             llm_enabled=llm_enabled,
-            model=str(openai_cfg.get("model", "gpt-5.4")),
+            model=str(openai_cfg.get("model", "gpt-5.5")),
             service_tier=str(openai_cfg.get("service_tier", "flex")),
             prompt_version=str(openai_cfg.get("prompt_version", "v2")),
             llm_batch_size=int(openai_cfg.get("thematic_batch_size", 12)),
@@ -1335,6 +1803,10 @@ def main(argv: list[str] | None = None) -> int:
             key_env_var=str(openai_cfg.get("key_env_var", "OPENAI_API_KEY")),
             key_path=paths.project_root / str(openai_cfg.get("key_file", "keys/OPENAI_API_KEY")),
             cache_path=paths.data_dir / "openai" / "categories.csv",
+            openai_processing_mode=openai_processing_mode,
+            batch_wait=batch_wait,
+            batch_poll_interval_seconds=batch_poll_interval_seconds,
+            batch_dir=paths.data_dir / "openai" / "batches",
         )
 
         df = validate_enhanced_ref_data(df)
@@ -1357,6 +1829,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Saved cleaned final CSV to: {final_exports['cleaned_csv_path']}")
         print(f"Saved Stata DTA to: {final_exports['cleaned_dta_path']}")
         print(f"Saved Stata column map to: {final_exports['column_map_path']}")
+    except OpenAIBatchPending as exc:
+        manifest_status = "pending"
+        manifest_notes = str(exc)
+        print(str(exc))
+        exit_code = 75
     except Exception as exc:  # noqa: BLE001
         manifest_status = "failed"
         manifest_notes = str(exc)
@@ -1377,7 +1854,7 @@ def main(argv: list[str] | None = None) -> int:
             notes=manifest_notes,
         )
 
-    return 0
+    return exit_code
 
 
 if __name__ == "__main__":

@@ -31,12 +31,13 @@ TRUSTED_LLM_STATUSES = {
 }
 BAD_LLM_STATUSES = {"missing", "disabled", "not_run", "error", "parse_error"}
 
-METHOD_PREFIXES = ("regex", "llmmini", "llm51", "llm54")
+METHOD_PREFIXES = ("regex", "llmmini", "llm51", "llm54", "llm55")
 METHOD_DISPLAY = {
     "regex": "Regex",
     "llmmini": "GPT-5-mini",
     "llm51": "GPT-5.1",
     "llm54": "GPT-5.4",
+    "llm55": "GPT-5.5",
 }
 PANEL_ORDER = ("A", "B", "C", "D")
 PANEL_DISPLAY_LABELS = {
@@ -50,9 +51,13 @@ PAIR_SPECS: dict[str, tuple[str, str, str]] = {
     "regex_vs_mini": ("Regex vs GPT-5-mini", "regex", "llmmini"),
     "regex_vs_51": ("Regex vs GPT-5.1", "regex", "llm51"),
     "regex_vs_54": ("Regex vs GPT-5.4", "regex", "llm54"),
+    "regex_vs_55": ("Regex vs GPT-5.5", "regex", "llm55"),
     "mini_vs_51": ("GPT-5-mini vs GPT-5.1", "llmmini", "llm51"),
     "mini_vs_54": ("GPT-5-mini vs GPT-5.4", "llmmini", "llm54"),
+    "mini_vs_55": ("GPT-5-mini vs GPT-5.5", "llmmini", "llm55"),
     "51_vs_54": ("GPT-5.1 vs GPT-5.4", "llm51", "llm54"),
+    "51_vs_55": ("GPT-5.1 vs GPT-5.5", "llm51", "llm55"),
+    "54_vs_55": ("GPT-5.4 vs GPT-5.5", "llm54", "llm55"),
 }
 PAIR_ORDER = list(PAIR_SPECS.keys())
 
@@ -60,10 +65,22 @@ PAIR_COLORS = {
     "regex_vs_mini": "#4D4D4D",
     "regex_vs_51": PANEL_COLORS.get("B", "#0072B2"),
     "regex_vs_54": PANEL_COLORS.get("C", "#E76F00"),
+    "regex_vs_55": "#7B3294",
     "mini_vs_51": "#4E79A7",
     "mini_vs_54": "#59A14F",
+    "mini_vs_55": "#9C755F",
     "51_vs_54": PANEL_COLORS.get("D", "#B2182B"),
+    "51_vs_55": "#F28E2B",
+    "54_vs_55": "#76B7B2",
 }
+
+THEMATIC_TEXT_FIELDS = [
+    "1. Summary of the impact",
+    "2. Underpinning research",
+    "3. References to the research",
+    "4. Details of the impact",
+    "5. Sources to corroborate the impact",
+]
 
 
 def _normalise_text(s: pd.Series) -> pd.Series:
@@ -71,6 +88,17 @@ def _normalise_text(s: pd.Series) -> pd.Series:
     s = s.str.replace("[\u2012\u2013\u2014\u2015]", "-", regex=True)
     s = s.str.replace(r"\s+", " ", regex=True).str.strip()
     return s
+
+
+def _combine_thematic_text(df: pd.DataFrame) -> pd.Series:
+    missing = [c for c in THEMATIC_TEXT_FIELDS if c not in df.columns]
+    if missing:
+        raise ValueError(f"Input table missing text columns required for cache linkage: {missing}")
+    parts = []
+    for col in THEMATIC_TEXT_FIELDS:
+        normalised_col = _normalise_text(df[col])
+        parts.append(normalised_col.map(lambda value, col=col: f"{col}: {value}" if value else ""))
+    return pd.concat(parts, axis=1).agg(" ".join, axis=1).str.replace(r"\s+", " ", regex=True).str.strip()
 
 
 def _make_cache_key(text: str, *, model: str, prompt_version: str) -> str:
@@ -158,7 +186,7 @@ def _topic_order_labels(
     df: pd.DataFrame,
     topics: list[str],
     *,
-    reference_prefix: str = "llm54",
+    reference_prefix: str = "llm55",
 ) -> list[str]:
     default_order = [_format_topic_label(t) for t in topics]
     ref = _build_topic_by_panel_for_method(df, topics, method_prefix=reference_prefix)
@@ -249,14 +277,14 @@ def plot_supplementary_figure_one_thematic_panels(
     """
     Supplementary Figure 1:
       - a) Regex topic female-share by REF panel
-      - b) GPT-5.1 topic female-share by REF panel
+      - b) GPT-5.5 topic female-share by REF panel
       - c) GPT-5-nano topic female-share by REF panel
     """
     _prep_pub_style()
-    topic_order = _topic_order_labels(df, topics, reference_prefix="llm54")
+    topic_order = _topic_order_labels(df, topics, reference_prefix="llm55")
     methods = [
         ("regex", "a.", "Regex"),
-        ("llm51", "b.", "GPT-5.1"),
+        ("llm55", "b.", "GPT-5.5"),
         ("llmmini", "c.", "GPT-5-nano"),
     ]
 
@@ -334,6 +362,8 @@ def attach_model_predictions_from_cache(
     prompt_51: str = "v2",
     model_54: str = "gpt-5.4",
     prompt_54: str = "v2",
+    model_55: str = "gpt-5.5",
+    prompt_55: str = "v2",
 ) -> pd.DataFrame:
     if not Path(categories_path).exists():
         raise FileNotFoundError(f"Missing OpenAI cache file: {categories_path}")
@@ -357,6 +387,7 @@ def attach_model_predictions_from_cache(
         "llmmini": {"model": str(model_mini), "prompt": str(prompt_mini)},
         "llm51": {"model": str(model_51), "prompt": str(prompt_51)},
         "llm54": {"model": str(model_54), "prompt": str(prompt_54)},
+        "llm55": {"model": str(model_55), "prompt": str(prompt_55)},
     }
 
     def _subset_for(model: str, prompt: str) -> pd.DataFrame:
@@ -373,12 +404,7 @@ def attach_model_predictions_from_cache(
         }
 
     out = df.copy()
-    text_cols = ["1. Summary of the impact", "4. Details of the impact"]
-    missing_text = [c for c in text_cols if c not in out.columns]
-    if missing_text:
-        raise ValueError(f"Input table missing text columns required for cache linkage: {missing_text}")
-
-    impact_text = (_normalise_text(out[text_cols[0]]) + " " + _normalise_text(out[text_cols[1]])).str.strip()
+    impact_text = _combine_thematic_text(out)
 
     for topic in topics:
         for prefix in method_specs:
@@ -412,8 +438,8 @@ def validate_method_coverage(df: pd.DataFrame, topics: list[str]) -> pd.DataFram
     rows: list[dict[str, object]] = []
     errors: list[str] = []
 
-    if "1. Summary of the impact" in df.columns and "4. Details of the impact" in df.columns:
-        text = (_normalise_text(df["1. Summary of the impact"]) + " " + _normalise_text(df["4. Details of the impact"])).str.strip()
+    if all(c in df.columns for c in THEMATIC_TEXT_FIELDS):
+        text = _combine_thematic_text(df)
         non_empty_mask = text != ""
     else:
         non_empty_mask = pd.Series(True, index=df.index)
@@ -681,22 +707,29 @@ def build_all_methods_agree_sample_df(
         "Unit of assessment number",
         "Main Panel",
         "Title",
-        "1. Summary of the impact",
-        "4. Details of the impact",
+        *THEMATIC_TEXT_FIELDS,
         "llm_status",
         "llm_error",
         "llmmini_status",
         "llm51_status",
         "llm54_status",
+        "llm55_status",
     ]
     pred_cols = [f"{prefix}_{topic}" for prefix in (*methods, "hybrid") for topic in topics]
     keep = [c for c in base_cols + pred_cols if c in sample.columns]
     sample = sample[keep].copy()
 
     for topic in topics:
-        sample[f"gold_{topic}"] = pd.NA
+        sample[f"reference_{topic}"] = pd.NA
     sample["adjudication_notes"] = ""
     return sample
+
+
+def _adjudication_reference_col(adjudicated: pd.DataFrame, topic: str) -> str | None:
+    reference_col = f"reference_{topic}"
+    if reference_col in adjudicated.columns:
+        return reference_col
+    return None
 
 
 def _binary_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> dict[str, float]:
@@ -727,17 +760,17 @@ def evaluate_on_all_methods_agree_only(
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     rows: list[dict[str, object]] = []
     for topic in topics:
-        gold_col = f"gold_{topic}"
+        reference_col = _adjudication_reference_col(adjudicated, topic)
         pred_cols = {m: f"{m}_{topic}" for m in methods}
-        if gold_col not in adjudicated.columns:
+        if reference_col is None:
             continue
         if any(c not in adjudicated.columns for c in pred_cols.values()):
             continue
 
-        y_true_raw = adjudicated[gold_col].map(_to_binary)
+        y_true_raw = adjudicated[reference_col].map(_to_binary)
         pred = {m: adjudicated[c].map(_to_binary) for m, c in pred_cols.items()}
 
-        valid_gold = y_true_raw.isin([0.0, 1.0])
+        valid_reference = y_true_raw.isin([0.0, 1.0])
         valid_preds = pd.Series(True, index=adjudicated.index)
         for m in methods:
             valid_preds = valid_preds & pred[m].isin([0.0, 1.0])
@@ -747,7 +780,7 @@ def evaluate_on_all_methods_agree_only(
         for m in methods[1:]:
             agree_mask = agree_mask & (pred[m] == pred[first_method])
 
-        eval_mask = valid_gold & valid_preds & agree_mask
+        eval_mask = valid_reference & valid_preds & agree_mask
         if not eval_mask.any():
             continue
 
@@ -862,6 +895,7 @@ def plot_model_comparison_figure(
         "GPT-5-mini": PANEL_COLORS.get("B", "#0072B2"),
         "GPT-5.1": PANEL_COLORS.get("C", "#E76F00"),
         "GPT-5.4": PANEL_COLORS.get("D", "#B2182B"),
+        "GPT-5.5": "#7B3294",
     }
     for src, grp in breadth.groupby("source", sort=False):
         sns.ecdfplot(
@@ -1029,6 +1063,7 @@ def plot_distribution_figure(df: pd.DataFrame, topics: list[str]) -> tuple[plt.F
         "GPT-5-mini": PANEL_COLORS.get("B", "#0072B2"),
         "GPT-5.1": PANEL_COLORS.get("C", "#E76F00"),
         "GPT-5.4": PANEL_COLORS.get("D", "#B2182B"),
+        "GPT-5.5": "#7B3294",
     }
 
     fig, (ax_a, ax_b) = plt.subplots(1, 2, figsize=(15, 6))
@@ -1083,7 +1118,7 @@ def save_figure_triplet(fig: plt.Figure, stem: Path):
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Cross-compare thematic indicators for Regex, GPT-5-mini, GPT-5.1, and GPT-5.4 with publication-ready outputs."
+        description="Cross-compare thematic indicators for Regex, GPT-5-mini, GPT-5.1, GPT-5.4, and GPT-5.5."
     )
     parser.add_argument("--config", type=str, default=None, help="Path to pipeline YAML config.")
     parser.add_argument("--project-root", type=str, default=None, help="Project root (defaults to repo root).")
@@ -1096,6 +1131,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--prompt-51", type=str, default="v2")
     parser.add_argument("--model-54", type=str, default="gpt-5.4")
     parser.add_argument("--prompt-54", type=str, default="v2")
+    parser.add_argument("--model-55", type=str, default="gpt-5.5")
+    parser.add_argument("--prompt-55", type=str, default="v2")
 
     parser.add_argument(
         "--health-check-output",
@@ -1127,7 +1164,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=str,
         default="outputs/figures/supplementary_figure_1",
         help=(
-            "Output stem for thematic bar-chart panels (Regex, GPT-5.1, GPT-5-nano) "
+            "Output stem for thematic bar-chart panels (Regex, GPT-5.5, GPT-5-nano) "
             "styled like Figure 2a (writes pdf/svg/png)."
         ),
     )
@@ -1163,7 +1200,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--adjudicated",
         type=str,
         default=None,
-        help="Optional adjudicated CSV containing gold_* columns.",
+        help="Optional adjudicated CSV containing reference_* columns.",
     )
     parser.add_argument(
         "--metrics-by-topic-output",
@@ -1196,7 +1233,7 @@ def main(argv: list[str] | None = None) -> int:
     # Keep existing hybrid for downstream compatibility where needed.
     df = add_hybrid_columns(df, topics)
 
-    # Attach explicit model predictions from cache for direct 4-way comparison.
+    # Attach explicit model predictions from cache for direct five-method comparison.
     df_cmp = attach_model_predictions_from_cache(
         df,
         topics,
@@ -1207,6 +1244,8 @@ def main(argv: list[str] | None = None) -> int:
         prompt_51=args.prompt_51,
         model_54=args.model_54,
         prompt_54=args.prompt_54,
+        model_55=args.model_55,
+        prompt_55=args.prompt_55,
     )
 
     health = validate_method_coverage(df_cmp, topics)
@@ -1251,7 +1290,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Wrote all-methods-agree sample ({len(sample)} rows): {sample_output}")
 
     if not args.adjudicated:
-        print("No --adjudicated file provided; four-method model-comparison analysis complete.")
+        print("No --adjudicated file provided; model-comparison analysis complete.")
         return 0
 
     adjudicated = read_table(Path(args.adjudicated))
@@ -1271,7 +1310,7 @@ def main(argv: list[str] | None = None) -> int:
     if by_topic_eval.empty:
         raise ValueError(
             "No evaluable rows found on all-methods-agree subset. "
-            "Ensure adjudicated file has gold_* columns with 0/1 or true/false labels."
+            "Ensure adjudicated file has reference_* columns with 0/1 or true/false labels."
         )
 
     metrics_by_topic_output = Path(args.metrics_by_topic_output)

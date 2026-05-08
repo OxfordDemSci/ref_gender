@@ -29,10 +29,16 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
     "openai": {
         "enabled": True,
-        "model": "gpt-5.4",
+        "model": "gpt-5.5",
         "service_tier": "flex",
+        "processing_mode": "sync",
+        "batch_wait": False,
+        "batch_poll_interval_seconds": 60,
         "prompt_version": "v2",
-        "thematic_batch_size": 12,
+        "thematic_batch_size": 1,
+        "staff_batch_size": 1,
+        "staff_max_retries": 5,
+        "staff_retry_base_sleep": 1.0,
         "prompt_cache_key": "thematic_indicators_v2",
         "prompt_cache_retention": "24h",
         "key_env_var": "OPENAI_API_KEY",
@@ -41,6 +47,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "step02": {
         "pdf_cache_enabled": True,
         "pdf_cache_dir": "cache/ref_pdfs",
+        "require_people": False,
+        "staff_local_first": True,
     },
     "dimensions": {
         "enabled": True,

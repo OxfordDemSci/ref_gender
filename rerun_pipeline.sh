@@ -9,6 +9,7 @@ MODE="offline"
 CLEAN_OUTPUTS=0
 DRY_RUN=0
 FORCE_STEP01=0
+CONFIRM_DELETE=0
 
 usage() {
   cat <<'EOF'
@@ -17,12 +18,21 @@ Usage:
 
 Modes:
   offline     Rebuild all outputs with no new API calls (default).
-  refresh     Full refresh using external services/APIs.
+  refresh     Full refresh using external services/APIs, preserving cached data.
+  rebuild     Delete generated data/outputs and rebuild from scratch using external services/APIs.
+  resume-flex
+              Resume from the OpenAI comparison-model backfill stage
+              using normal flex-tier API calls, then continue with steps 03-10.
+  resume-openai
+              Resume from the OpenAI comparison-model backfill stage,
+              then continue with steps 03-10.
   downstream  Rebuild only downstream artifacts (steps 04-10).
 
 Options:
-  --mode <offline|refresh|downstream>  Pipeline mode (default: offline)
+  --mode <offline|refresh|rebuild|resume-flex|resume-openai|downstream>
+                                      Pipeline mode (default: offline)
   --clean-outputs                      Delete files under outputs/ before running
+  --i-understand-this-deletes-data     Required with --mode rebuild
   --config <path>                      Path to pipeline.yaml
   --project-root <path>                Project root (default: script directory)
   --python <python_bin>                Python executable (default: python)
@@ -33,6 +43,9 @@ Options:
 Notes:
   - --clean-outputs only clears outputs/ files.
   - Cached data and precomputed API/LLM artifacts in data/ are preserved.
+  - --mode rebuild deletes generated data but preserves data/manual and keys/.
+  - --mode resume-flex does not rerun PDF scraping, staff extraction, or the
+    primary enhanced REF dataset build.
 EOF
 }
 
@@ -42,7 +55,18 @@ run_step() {
   if [[ "$DRY_RUN" -eq 1 ]]; then
     return 0
   fi
+  set +e
   "$@"
+  local rc=$?
+  set -e
+  if [[ "$rc" -eq 75 ]]; then
+    echo
+    echo "OpenAI Batch job is pending. Re-run the same pipeline command later to collect results and continue."
+    exit 75
+  fi
+  if [[ "$rc" -ne 0 ]]; then
+    exit "$rc"
+  fi
 }
 
 run_downstream_steps() {
@@ -56,8 +80,54 @@ run_downstream_steps() {
     --project-root "$PROJECT_ROOT" \
     --model-mini gpt-5-nano --prompt-mini v2 \
     --model-51 gpt-5.1 --prompt-51 v2 \
-    --model-54 gpt-5.4 --prompt-54 v2
+    --model-54 gpt-5.4 --prompt-54 v2 \
+    --model-55 gpt-5.5 --prompt-55 v2
   run_step "$PYTHON_BIN" -m src.step10_analyze_ics_text_gender --config "$CONFIG_PATH" --project-root "$PROJECT_ROOT"
+}
+
+backfill_thematic_comparison_models() {
+  run_step "$PYTHON_BIN" -m src.step01_make_enhanced_data \
+    --config "$CONFIG_PATH" --project-root "$PROJECT_ROOT" \
+    --backfill-model gpt-5-nano --backfill-prompt-version v2 \
+    --backfill-service-tier flex --backfill-batch-size 1 \
+    --backfill-prompt-cache-key thematic_indicators_v2
+  run_step "$PYTHON_BIN" -m src.step01_make_enhanced_data \
+    --config "$CONFIG_PATH" --project-root "$PROJECT_ROOT" \
+    --backfill-model gpt-5.1 --backfill-prompt-version v2 \
+    --backfill-service-tier flex --backfill-batch-size 1 \
+    --backfill-prompt-cache-key thematic_indicators_v2
+  run_step "$PYTHON_BIN" -m src.step01_make_enhanced_data \
+    --config "$CONFIG_PATH" --project-root "$PROJECT_ROOT" \
+    --backfill-model gpt-5.4 --backfill-prompt-version v2 \
+    --backfill-service-tier flex --backfill-batch-size 1 \
+    --backfill-prompt-cache-key thematic_indicators_v2
+}
+
+delete_generated_data() {
+  local targets=(
+    "$OUTPUTS_DIR"
+    "$DATA_DIR/source"
+    "$DATA_DIR/working"
+    "$DATA_DIR/analysis"
+    "$DATA_DIR/raw"
+    "$DATA_DIR/edit"
+    "$DATA_DIR/final"
+    "$DATA_DIR/wrangled"
+    "$DATA_DIR/openai"
+    "$DATA_DIR/ics_staff_rows"
+    "$DATA_DIR/ics_grants"
+    "$DATA_DIR/cache"
+    "$DATA_DIR/dimensions_outputs"
+  )
+  echo
+  echo "Deleting generated data/output directories:"
+  for target in "${targets[@]}"; do
+    echo "  $target"
+  done
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    return 0
+  fi
+  rm -rf "${targets[@]}"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -68,6 +138,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --clean-outputs)
       CLEAN_OUTPUTS=1
+      shift
+      ;;
+    --i-understand-this-deletes-data)
+      CONFIRM_DELETE=1
       shift
       ;;
     --config)
@@ -103,9 +177,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "$MODE" in
-  offline|refresh|downstream) ;;
+  offline|refresh|rebuild|resume-flex|resume-openai|downstream) ;;
   *)
-    echo "Invalid --mode '$MODE' (use: offline, refresh, downstream)." >&2
+    echo "Invalid --mode '$MODE' (use: offline, refresh, rebuild, resume-flex, resume-openai, downstream)." >&2
     exit 2
     ;;
 esac
@@ -139,6 +213,11 @@ echo "Clean outputs:$CLEAN_OUTPUTS"
 echo "Force step01: $FORCE_STEP01"
 echo "Dry run:      $DRY_RUN"
 
+if [[ "$MODE" == "rebuild" && "$CONFIRM_DELETE" -ne 1 ]]; then
+  echo "Refusing rebuild without --i-understand-this-deletes-data." >&2
+  exit 2
+fi
+
 if [[ "$CLEAN_OUTPUTS" -eq 1 ]]; then
   if [[ -d "$OUTPUTS_DIR" ]]; then
     echo
@@ -154,10 +233,24 @@ if [[ "$CLEAN_OUTPUTS" -eq 1 ]]; then
   fi
 fi
 
+if [[ "$MODE" == "rebuild" ]]; then
+  delete_generated_data
+  mkdir -p "$DATA_DIR" "$OUTPUTS_DIR"
+  MODE="refresh"
+fi
+
 if [[ "$MODE" == "refresh" ]]; then
-  run_step "$PYTHON_BIN" -m src.step01_make_enhanced_data --config "$CONFIG_PATH" --project-root "$PROJECT_ROOT" --without-llm --force
-  run_step "$PYTHON_BIN" -m src.step02_make_ref_staff --config "$CONFIG_PATH" --project-root "$PROJECT_ROOT" --with-llm
+  run_step "$PYTHON_BIN" -m src.step01_make_enhanced_data --config "$CONFIG_PATH" --project-root "$PROJECT_ROOT" --prepare-source-only
+  run_step "$PYTHON_BIN" -m src.step02_make_ref_staff --config "$CONFIG_PATH" --project-root "$PROJECT_ROOT" --input "$DATA_DIR/source/raw_ref_ics_data.xlsx" --with-llm
   run_step "$PYTHON_BIN" -m src.step01_make_enhanced_data --config "$CONFIG_PATH" --project-root "$PROJECT_ROOT" --with-llm --force
+  backfill_thematic_comparison_models
+  run_step "$PYTHON_BIN" -m src.step03_get_dimensions_research_outputs --config "$CONFIG_PATH" --project-root "$PROJECT_ROOT" --force
+  run_downstream_steps
+  exit 0
+fi
+
+if [[ "$MODE" == "resume-flex" || "$MODE" == "resume-openai" ]]; then
+  backfill_thematic_comparison_models
   run_step "$PYTHON_BIN" -m src.step03_get_dimensions_research_outputs --config "$CONFIG_PATH" --project-root "$PROJECT_ROOT" --force
   run_downstream_steps
   exit 0
