@@ -6,246 +6,327 @@
 ![Plots](https://img.shields.io/badge/plots-matplotlib-orange)
 ![Data](https://img.shields.io/badge/data-REF%202021-9cf)
 
-This repository contains the full computational pipeline for analysing gender representation in UK REF 2021 Impact Case Studies (ICS) and research outputs, including:
-- data construction from REF source files,
-- staff-name extraction from ICS PDFs,
-- output-author enrichment from Dimensions,
-- thematic indicator construction (regex and LLM-based),
-- regression modelling,
-- publication-ready figures/tables,
-- additional word-level text association analysis.
+This repository contains the reproducible pipeline for analysing gender representation in UK REF 2021 Impact Case Studies (ICS) and REF-linked research outputs.
 
-The project is script-first and intended for reproducible reruns from the command line.
+The pipeline builds:
 
-## 1. Study Scope
-The central empirical objective is to evaluate gender composition differences between:
-- REF Impact Case Studies,
-- REF-linked research outputs,
+- case-level ICS gender counts from extracted staff names,
+- output-level author gender counts from Dimensions metadata,
+- regex and OpenAI thematic indicators from REF case-study text,
+- model-comparison diagnostics across thematic classifiers,
+- regression models, manuscript figures, tables, and supplementary text-analysis outputs.
 
-and to examine how institutional, panel, and thematic features relate to women’s representation.
+All commands below are intended to be run from the repository root.
 
-The repository operationalises this with:
-- case-level and aggregated gender counts,
-- panel/UoA splits,
-- thematic indicators (regex + LLM model variants),
-- OLS and GLM model families,
-- validation and agreement diagnostics.
+## Repository Layout
 
-## 2. Repository Structure
+Core pipeline scripts:
 
-### 2.1 Core scripts (analysis pipeline)
-- `src/step01_make_enhanced_data.py`
-  - Builds canonical enhanced ICS dataset in `data/analysis/enhanced_ref_data.{parquet,csv}`.
-  - Can run with or without LLM thematic classification.
-  - Supports model/prompt cache backfilling in `data/openai/categories.csv`.
-- `src/step02_make_ref_staff.py`
-  - Extracts staff blocks from ICS PDFs and derives case-level staff gender counts.
-  - Writes outputs under `data/ics_staff_rows/`.
-- `src/step03_get_dimensions_research_outputs.py`
-  - Builds output-level author-gender tables using Dimensions API (or existing local chunks/outputs in offline mode).
-  - Writes `outputs_concat_with_any_number_authors` and `outputs_concat_with_positive_authors` to `data/analysis/`.
-- `src/step04_make_figure_one.py`
-  - Rebuilds Figure 1.
-- `src/step05_build_regression_models.py`
-  - Fits weighted OLS + GLM specifications and writes `outputs/models/regression_results.pkl`.
-- `src/step06_make_figure_two.py`
-  - Rebuilds Figure 2 and `supplementary_figure_2`.
-- `src/step07_make_table_one.py`
-  - Rebuilds Table 1 LaTeX (`outputs/tables/regression_results.tex`).
-- `src/step08_build_statistics.py`
-  - Rebuilds descriptive/inference report + summary LaTeX tables.
-- `src/step09_evaluate_thematic_indicators.py`
-  - Cross-method thematic comparison across Regex / GPT-5-mini / GPT-5.1 / GPT-5.4 / GPT-5.5.
-  - Produces `supplementary_figure_1`, `supplementary_figure_4`, and agreement/coverage tables.
-- `src/step10_analyze_ics_text_gender.py`
-  - Word-level association analysis for ICS text vs case-level female share outcome.
+- `src/step01_make_enhanced_data.py` builds `data/analysis/enhanced_ref_data.{parquet,csv}` and manages OpenAI thematic-indicator cache rows in `data/openai/categories.csv`.
+- `src/step02_make_ref_staff.py` downloads/caches ICS PDFs, extracts staff blocks, uses LLM extraction where enabled, and writes `data/ics_staff_rows/`.
+- `src/step03_get_dimensions_research_outputs.py` queries or reuses Dimensions chunks and writes `data/analysis/outputs_concat_with_*_authors.{parquet,csv}`.
+- `src/step04_make_figure_one.py` rebuilds Figure 1.
+- `src/step05_build_regression_models.py` fits regression models and writes `outputs/models/regression_results.pkl`.
+- `src/step06_make_figure_two.py` rebuilds Figure 2 plus supplementary regression figures.
+- `src/step07_make_table_one.py` writes `outputs/tables/regression_results.tex`.
+- `src/step08_build_statistics.py` writes descriptive statistics and summary tables.
+- `src/step09_evaluate_thematic_indicators.py` compares regex, GPT-5-nano, GPT-5.1, GPT-5.4, and GPT-5.5 thematic indicators.
+- `src/step10_analyze_ics_text_gender.py` runs word-level ICS text/gender association analysis.
 
-### 2.2 Shared modules
-- `src/figure_one_*.py`, `src/figure_two_*.py`, `src/statistics_helpers.py`
-- `src/pipeline_*.py` (config, paths, I/O, schema, drift checks)
+Important directories:
 
-### 2.3 Data and outputs
-- `data/source/` downloaded source inputs
-- `data/working/` intermediate cleaned and wrangled tables
-- `data/analysis/` canonical analysis-ready tables
-- `outputs/figures/` publication figures
-- `outputs/tables/` publication and diagnostic tables
-- `outputs/models/` fitted model artifacts
+- `data/source/`: downloaded source workbooks and cached Dimensions chunks.
+- `data/cache/ref_pdfs/`: cached ICS PDFs.
+- `data/ics_staff_rows/`: staff extraction rows, case-level counts, and audit files.
+- `data/openai/`: OpenAI thematic cache.
+- `data/analysis/`: canonical analysis-ready datasets.
+- `data/final/`: final enhanced dataset exports.
+- `data/dimensions_outputs/`: legacy mirror of Dimensions output-author tables.
+- `outputs/figures/`: figures in PDF/SVG/PNG.
+- `outputs/tables/`: manuscript and diagnostic tables.
+- `outputs/models/`: fitted model artifacts.
 
-## 3. Data Provenance
+## Current Pipeline Defaults
 
-### 3.1 REF inputs
-The pipeline consumes REF 2021 public workbooks (environment/results/ICS/ICS tags/outputs) via step01 download routines, with local persistence under `data/source/` (mirrored to legacy paths for compatibility).
+Configuration is in `pipeline.yaml`.
 
-### 3.2 ICS PDF text
-Step02 downloads ICS PDFs from the REF website and extracts text/staff blocks.
-It now supports persistent local PDF caching (`data/cache/ref_pdfs/` by default) and writes an extraction audit table at:
-- `data/ics_staff_rows/ref_staff_extraction_audit.csv`
+Current OpenAI defaults:
 
-### 3.3 Dimensions metadata
-Step03 queries Dimensions publication metadata (unless `--skip-api`), and enriches output records with author-level gender counts.
+- primary model: `gpt-5.5`
+- prompt version: `v2`
+- service tier: `flex`
+- processing mode: `sync`
+- OpenAI Batch API: not used by default
+- thematic request batch size: `1`
+- staff extraction request batch size: `1`
+- transient OpenAI retry budget for staff extraction: `5`
+- prompt cache key: `thematic_indicators_v2`
 
-### 3.4 LLM thematic indicators
-Step01 can generate thematic indicator flags from ICS text and cache results in:
-- `data/openai/categories.csv`
+Thematic classification uses all five REF ICS text fields:
 
-Cache keys are deterministic hashes of:
-- prompt version,
-- model,
-- normalized ICS text from all five REF case-study fields: summary, underpinning research, references, impact details, and corroborating sources.
+- `1. Summary of the impact`
+- `2. Underpinning research`
+- `3. References to the research`
+- `4. Details of the impact`
+- `5. Sources to corroborate the impact`
 
-## 4. Environment Setup
+Staff extraction is robust by design:
 
-### 4.1 Python environment
-- Python 3.9+
+- PDF text extraction is cached under `data/cache/ref_pdfs/`.
+- LLM extraction retries transient OpenAI failures.
+- Cases that remain genuinely unresolved are kept as unresolved/blank counts, not silently converted to zero people.
+- `step02.require_people: false` allows the pipeline to continue while preserving unresolved status in audit outputs.
+
+Gender inference for both ICS staff names and Dimensions author forenames uses:
+
+1. `gender_guesser` as the primary deterministic classifier.
+2. `gender_detector` as a fallback only when `gender_guesser` returns `unknown`.
+
+The stored output labels remain exactly:
+
+- `male`
+- `female`
+- `unknown`
+
+## Credentials
+
+OpenAI credentials can be provided by either:
+
+- environment variable: `OPENAI_API_KEY`
+- file fallback: `keys/OPENAI_API_KEY`
+
+Dimensions credentials can be provided by either:
+
+- environment variable: `DIMENSIONS_API_KEY`
+- file fallback: `keys/dimensions_apikey.txt`
+
+`keys/` is intentionally preserved by rebuild commands.
+
+## Setup
 
 Install dependencies:
+
 ```bash
 pip install -r requirements.txt
 ```
 
-If parquet read/write fails, ensure `pyarrow` is installed (already listed in requirements).
+If parquet read/write fails, check that `pyarrow` is installed.
 
-### 4.2 Optional API credentials
-- OpenAI:
-  - env var: `OPENAI_API_KEY`
-  - file fallback: `keys/OPENAI_API_KEY`
-- Dimensions:
-  - env var: `DIMENSIONS_API_KEY`
-  - file fallback: `keys/dimensions_apikey.txt`
+## One-Command Workflows
 
-### 4.3 Configuration
-Runtime configuration is controlled by `pipeline.yaml`.
-Key defaults include:
-- OpenAI model: `gpt-5.5`
-- OpenAI prompt version: `v2`
-- OpenAI service tier: `flex`
-- thematic batch size: `12`
-- staff extraction batch size: `8`
-- staff extraction retry budget: `5` retries per transient OpenAI request
-- persistent staff extraction failures are recorded as blank/NaN counts with audit status, not treated as zero people
-- step02 PDF cache: enabled, directory `data/cache/ref_pdfs/`
+### Offline Rerun
 
-## 5. Step-by-Step Pipeline Map
+Use this when local data/cache artifacts already exist and you do not want new API calls:
 
-| Step | Script | External calls by default | Primary outputs |
-|---|---|---|---|
-| 01 | `step01_make_enhanced_data.py` | REF workbook downloads; OpenAI (if `--with-llm`) | `data/analysis/enhanced_ref_data.*`, `data/openai/categories.csv` |
-| 02 | `step02_make_ref_staff.py` | ICS PDF downloads; OpenAI (if `--with-llm`) | `data/ics_staff_rows/*.csv` |
-| 03 | `step03_get_dimensions_research_outputs.py` | Dimensions API (unless `--skip-api`) | `data/analysis/outputs_concat_*.{parquet,csv}` |
-| 04 | `step04_make_figure_one.py` | none | `outputs/figures/figure_one.{pdf,svg,png}` |
-| 05 | `step05_build_regression_models.py` | none | `outputs/models/regression_results.pkl` |
-| 06 | `step06_make_figure_two.py` | none | `outputs/figures/figure_two.*`, `outputs/figures/supplementary_figure_2.*` |
-| 07 | `step07_make_table_one.py` | none | `outputs/tables/regression_results.tex` |
-| 08 | `step08_build_statistics.py` | none | `outputs/tables/statistics_report.txt`, summary `.tex` tables |
-| 09 | `step09_evaluate_thematic_indicators.py` | none | `outputs/figures/supplementary_figure_1.*`, `outputs/figures/supplementary_figure_4.*`, thematic diagnostics `.csv` |
-| 10 | `step10_analyze_ics_text_gender.py` | none | `outputs/figures/supplementary_figure_5.*`, step10 tables |
-
-## 6. Reproducibility Workflows
-
-### 6.1 Full refresh (uses external services)
-Use when you explicitly want to refresh data/classifications from external sources:
 ```bash
-python -m src.step01_make_enhanced_data --prepare-source-only
-python -m src.step02_make_ref_staff --input data/source/raw_ref_ics_data.xlsx --with-llm
-python -m src.step01_make_enhanced_data --with-llm --force
-python -m src.step03_get_dimensions_research_outputs --force
-python -m src.step04_make_figure_one
-python -m src.step05_build_regression_models
-python -m src.step06_make_figure_two
-python -m src.step07_make_table_one
-python -m src.step08_build_statistics
-python -m src.step09_evaluate_thematic_indicators --model-mini gpt-5-nano --prompt-mini v2 --model-51 gpt-5.1 --prompt-51 v2 --model-54 gpt-5.4 --prompt-54 v2 --model-55 gpt-5.5 --prompt-55 v2
-python -m src.step10_analyze_ics_text_gender
+./rerun_pipeline.sh --mode offline
 ```
 
-For a one-command destructive rebuild from scratch, use:
+This reuses existing enhanced data, staff rows, OpenAI cache rows, and Dimensions chunks/outputs. It then rebuilds downstream figures, tables, models, and diagnostics.
+
+### Downstream-Only Rerun
+
+Use this when `data/analysis/` is already current and only outputs need rebuilding:
+
+```bash
+./rerun_pipeline.sh --mode downstream
+```
+
+This runs steps 04-10 only.
+
+### Full Refresh
+
+Use this when you want to refresh source data and external-service outputs while preserving cached/generated directories:
+
+```bash
+./rerun_pipeline.sh --mode refresh
+```
+
+This may call REF downloads, OpenAI, and Dimensions.
+
+### Destructive Rebuild
+
+Use only when you want to delete generated data and rebuild from scratch:
+
 ```bash
 ./rerun_pipeline.sh --mode rebuild --i-understand-this-deletes-data
 ```
-This deletes generated data/output directories, preserves `data/manual/` and `keys/`, then re-downloads/rebuilds all external data and OpenAI classifications.
 
-### 6.2 Full rerun with no new API calls (local snapshot only)
-Use when journal reproducibility requires regeneration from frozen local data/cache:
+This deletes generated data/output directories, preserves `data/manual/` and `keys/`, then runs the refresh pipeline.
+
+### Resume OpenAI Comparison Backfills
+
+Use when the primary enhanced dataset and staff rows already exist, but comparison-model thematic cache rows still need filling:
+
 ```bash
-cd ~/Dropbox/ics_work/ref_gender && REF_SKIP_MANIFEST=1 PYTHONUNBUFFERED=1 bash -lc 'set -euo pipefail; ENH_PATH="$( [ -f data/analysis/enhanced_ref_data.parquet ] && echo data/analysis/enhanced_ref_data.parquet || { [ -f data/analysis/enhanced_ref_data.csv ] && echo data/analysis/enhanced_ref_data.csv || true; } )"; [ -n "$ENH_PATH" ] || { echo "Missing existing enhanced_ref_data in data/analysis"; exit 1; }; printf "REF impact case study identifier\n" > /tmp/ref_gender_empty_ids.csv; python -m src.step01_make_enhanced_data --with-llm --output "$ENH_PATH"; python -m src.step02_make_ref_staff --without-llm --input /tmp/ref_gender_empty_ids.csv --out-dir /tmp/ref_gender_step02_noapi; python -m src.step03_get_dimensions_research_outputs --skip-api; python -m src.step04_make_figure_one; python -m src.step05_build_regression_models; python -m src.step06_make_figure_two; python -m src.step07_make_table_one; python -m src.step08_build_statistics; python -m src.step09_evaluate_thematic_indicators --model-mini gpt-5-nano --prompt-mini v2 --model-51 gpt-5.1 --prompt-51 v2 --model-54 gpt-5.4 --prompt-54 v2 --model-55 gpt-5.5 --prompt-55 v2; python -m src.step10_analyze_ics_text_gender'
+./rerun_pipeline.sh --mode resume-flex
 ```
 
-Notes:
-- This mode regenerates outputs from current local artifacts.
-- It does not refresh external datasets/classifications.
-- In `step03 --skip-api`, existing-output contract mismatches are downgraded to warnings to allow offline continuation.
+This backfills:
 
-### 6.3 Downstream-only rerun (fast)
-If `data/analysis/` is already current:
+- `gpt-5-nano`
+- `gpt-5.1`
+- `gpt-5.4`
+
+using flex-tier synchronous calls with one item per request, then continues through Dimensions and downstream steps.
+
+## Recovery Workflows
+
+### Recover After a Dimensions Write/Serialization Failure
+
+If Dimensions API chunking completed but `step03` failed while assembling or writing outputs, do not rerun expensive API calls. Rebuild from saved raw chunks:
+
 ```bash
-python -m src.step04_make_figure_one
-python -m src.step05_build_regression_models
-python -m src.step06_make_figure_two
-python -m src.step07_make_table_one
-python -m src.step08_build_statistics
-python -m src.step09_evaluate_thematic_indicators --model-mini gpt-5-nano --prompt-mini v2 --model-51 gpt-5.1 --prompt-51 v2 --model-54 gpt-5.4 --prompt-54 v2 --model-55 gpt-5.5 --prompt-55 v2
-python -m src.step10_analyze_ics_text_gender
+python -m src.step03_get_dimensions_research_outputs \
+  --config pipeline.yaml \
+  --project-root . \
+  --skip-api \
+  --force
 ```
 
-## 7. Thematic Indicator Model Slices
-Step09 expects five method families:
-- Regex (`regex_*`)
-- GPT-5-mini defaults (configured as `gpt-5-nano` + prompt `v2`)
-- GPT-5.1 (`v2`)
-- GPT-5.4 (`v2`)
-- GPT-5.5 (`v2`, primary)
+Then continue:
 
-If cache slices are incomplete, backfill per model:
 ```bash
-python -m src.step01_make_enhanced_data --backfill-model gpt-5-nano --backfill-prompt-version v2 --backfill-service-tier flex --backfill-batch-size 12 --backfill-prompt-cache-key thematic_indicators_v2
-python -m src.step01_make_enhanced_data --backfill-model gpt-5.1   --backfill-prompt-version v2 --backfill-service-tier flex --backfill-batch-size 12 --backfill-prompt-cache-key thematic_indicators_v2
-python -m src.step01_make_enhanced_data --backfill-model gpt-5.4   --backfill-prompt-version v2 --backfill-service-tier flex --backfill-batch-size 12 --backfill-prompt-cache-key thematic_indicators_v2
-python -m src.step01_make_enhanced_data --backfill-model gpt-5.5   --backfill-prompt-version v2 --backfill-service-tier flex --backfill-batch-size 12 --backfill-prompt-cache-key thematic_indicators_v2
-```
-Then rebuild enhanced data:
-```bash
-python -m src.step01_make_enhanced_data --with-llm --force
+./rerun_pipeline.sh --mode downstream
 ```
 
-## 8. Key Manuscript Artifacts
+One-line version:
 
-### 8.1 Figures
+```bash
+mkdir -p logs && { python -m src.step03_get_dimensions_research_outputs --config pipeline.yaml --project-root . --skip-api --force && ./rerun_pipeline.sh --mode downstream; } 2>&1 | tee logs/resume_from_step03_$(date +%Y%m%d_%H%M%S).log
+```
+
+The current `step03` implementation serializes complex Dimensions fields such as `authors` and `category_for_2020` as JSON strings before writing parquet. This avoids PyArrow failures caused by mixed nested types in Dimensions metadata.
+
+### Check Whether Expensive Data Already Exists
+
+Dimensions raw chunks:
+
+```bash
+find data/source/dimensions_api/raw -name 'df_*.csv' -printf '%h\n' | sort | uniq -c
+```
+
+OpenAI thematic cache:
+
+```bash
+python - <<'PY'
+import pandas as pd
+df = pd.read_csv("data/openai/categories.csv", usecols=["model", "prompt_version", "llm_status", "cache_key"])
+print(df.groupby(["model", "prompt_version", "llm_status"]).size())
+print("bad rows:", len(df[~df["llm_status"].isin(["ok", "ok_prompt_cache_fallback"])]))
+print(df.groupby(["model", "prompt_version"])["cache_key"].nunique())
+PY
+```
+
+## Step Map
+
+| Step | Script | External calls by default | Primary outputs |
+|---|---|---|---|
+| 01 | `step01_make_enhanced_data.py` | REF downloads; OpenAI when `--with-llm` needs uncached rows | `data/analysis/enhanced_ref_data.*`, `data/openai/categories.csv` |
+| 02 | `step02_make_ref_staff.py` | ICS PDF downloads; OpenAI when `--with-llm` needs extraction | `data/ics_staff_rows/*.csv` |
+| 03 | `step03_get_dimensions_research_outputs.py` | Dimensions unless `--skip-api` | `data/analysis/outputs_concat_*.{parquet,csv}` |
+| 04 | `step04_make_figure_one.py` | none | `outputs/figures/figure_one.{pdf,svg,png}` |
+| 05 | `step05_build_regression_models.py` | none | `outputs/models/regression_results.pkl` |
+| 06 | `step06_make_figure_two.py` | none | `outputs/figures/figure_two.*`, supplementary regression figures |
+| 07 | `step07_make_table_one.py` | none | `outputs/tables/regression_results.tex` |
+| 08 | `step08_build_statistics.py` | none | `outputs/tables/statistics_report.txt`, summary `.tex` tables |
+| 09 | `step09_evaluate_thematic_indicators.py` | none | thematic diagnostics and comparison figures |
+| 10 | `step10_analyze_ics_text_gender.py` | none | `supplementary_figure_5.*`, word-association tables |
+
+## Thematic Indicator Methods
+
+Step09 compares five method families:
+
+- Regex rules.
+- GPT-5-nano, displayed in some outputs as `GPT-5-mini`.
+- GPT-5.1.
+- GPT-5.4.
+- GPT-5.5, the primary model used by the main enhanced dataset and Figure 2.
+
+If comparison cache slices need filling manually:
+
+```bash
+python -m src.step01_make_enhanced_data --config pipeline.yaml --project-root . --backfill-model gpt-5-nano --backfill-prompt-version v2 --backfill-service-tier flex --backfill-batch-size 1 --backfill-prompt-cache-key thematic_indicators_v2
+python -m src.step01_make_enhanced_data --config pipeline.yaml --project-root . --backfill-model gpt-5.1   --backfill-prompt-version v2 --backfill-service-tier flex --backfill-batch-size 1 --backfill-prompt-cache-key thematic_indicators_v2
+python -m src.step01_make_enhanced_data --config pipeline.yaml --project-root . --backfill-model gpt-5.4   --backfill-prompt-version v2 --backfill-service-tier flex --backfill-batch-size 1 --backfill-prompt-cache-key thematic_indicators_v2
+```
+
+Then rebuild the enhanced dataset if needed:
+
+```bash
+python -m src.step01_make_enhanced_data --config pipeline.yaml --project-root . --with-llm --force
+```
+
+## Key Outputs
+
+Figures:
+
 - `outputs/figures/figure_one.{pdf,svg,png}`
 - `outputs/figures/figure_two.{pdf,svg,png}`
 - `outputs/figures/supplementary_figure_1.{pdf,svg,png}`
 - `outputs/figures/supplementary_figure_2.{pdf,svg,png}`
+- `outputs/figures/supplementary_figure_3.{pdf,svg,png}`
 - `outputs/figures/supplementary_figure_4.{pdf,svg,png}`
 - `outputs/figures/supplementary_figure_5.{pdf,svg,png}`
 
-### 8.2 Tables
+Tables:
+
 - `outputs/tables/regression_results.tex`
 - `outputs/tables/panel_summary.tex`
 - `outputs/tables/uoa_summary.tex`
 - `outputs/tables/llm_summary.tex`
 - `outputs/tables/llm_panel_summary.tex`
+- `outputs/tables/statistics_report.txt`
 - `outputs/tables/thematic_model_health_checks.csv`
 - `outputs/tables/thematic_pairwise_agreement_by_topic.csv`
 - `outputs/tables/thematic_pairwise_agreement_summary.csv`
 - `outputs/tables/thematic_topic_positive_rates.csv`
-- `outputs/tables/statistics_report.txt`
+- `outputs/tables/thematic_adjudication_sample.csv`
 - `outputs/tables/supplementary_figure_5_all.csv`
 - `outputs/tables/supplementary_figure_5_top_positive.csv`
 - `outputs/tables/supplementary_figure_5_top_negative.csv`
 
-### 8.3 Model artifacts
+Models:
+
 - `outputs/models/regression_results.pkl`
 
-## 9. Validation and QA Checks
-- Schema validation for enhanced/output tables (`src/pipeline_schema.py`).
-- Drift checks with configurable thresholds (`pipeline.yaml` -> `drift_checks`).
-- Step06 enforces GPT-5.5 thematic indicator availability for Figure 2.
-- Step09 performs strict method-coverage checks and fails fast on missing/disabled/error/parse_error statuses.
+## Validation Checks
 
-## 10. Determinism and Caching
-- LLM thematic cache keys are deterministic (`prompt_version + model + normalized text`).
-- Step09 adjudication sample uses fixed default random seed (`42`).
-- Manifest logging writes a CSV unless `REF_SKIP_MANIFEST=1`; `rerun_pipeline.sh` sets that by default.
+Run targeted tests for the recent pipeline fixes:
 
-## 11. License
+```bash
+python -m unittest tests.test_step03_gender_inference tests.test_pipeline_schema
+```
+
+Check the latest thematic method coverage:
+
+```bash
+cat outputs/tables/thematic_model_health_checks.csv
+```
+
+Check Dimensions output row contracts:
+
+```bash
+python - <<'PY'
+import pandas as pd
+any_df = pd.read_parquet("data/analysis/outputs_concat_with_any_number_authors.parquet")
+pos_df = pd.read_parquet("data/analysis/outputs_concat_with_positive_authors.parquet")
+print("any rows:", len(any_df))
+print("positive rows:", len(pos_df))
+print("positive ids subset of any ids:", set(pos_df["REF2ID"].astype(str)).issubset(set(any_df["REF2ID"].astype(str))))
+print("zero-author rows in any:", int((pd.to_numeric(any_df["number_people"], errors="coerce").fillna(-1) == 0).sum()))
+print("non-positive rows in positive:", int((pd.to_numeric(pos_df["number_people"], errors="coerce").fillna(0) <= 0).sum()))
+PY
+```
+
+## Determinism and Caching
+
+- OpenAI thematic cache keys are deterministic hashes of model, prompt version, and normalized five-field ICS text.
+- Successful prompt-cache fallback rows are stored with `llm_status=ok_prompt_cache_fallback` and are treated as valid completions.
+- `step03 --skip-api` reuses saved Dimensions chunks and does not call Dimensions.
+- Step09 strict health checks fail on missing, disabled, parse-error, or otherwise bad thematic rows.
+- `rerun_pipeline.sh` sets `REF_SKIP_MANIFEST=1` by default, so manifest rows may be absent unless this is overridden.
+
+## License
+
 GNU GPLv3. See `LICENSE`.
