@@ -206,9 +206,14 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 data/*
+.conda/
+.github/
 .idea/*
+.idea/
 keys/*
+.venv/
 .vscode/*
+.vscode/
 .github/workflows/pipeline-smoke.yml
 src/__init__.py
 outputs/models/*
