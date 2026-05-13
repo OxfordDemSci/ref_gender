@@ -5,8 +5,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib import colors as mcolors
+from matplotlib.legend import Legend
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
+from matplotlib.text import Text
 
 try:  # pragma: no cover
     from .figure_one_helpers import (
@@ -29,7 +31,7 @@ except ImportError:  # pragma: no cover
         uoa_to_panel,
     )
 
-AXIS_LABEL_SIZE = 12
+AXIS_LABEL_SIZE = 13
 VIOLIN_ALPHA_IMPACT = 0.35
 VIOLIN_ALPHA_OUTPUT = 0.35
 NON_VIOLIN_ALPHA = 0.65
@@ -129,7 +131,7 @@ def _plot_impact_premium_panel(ax, df_uoa_m):
 
     xticks = np.linspace(-x_lim, x_lim, 5)
     ax.set_xticks(xticks)
-    ax.set_xticklabels([f"{int(v):+d}%" if v else "0%" for v in xticks], fontsize=10)
+    ax.set_xticklabels([f"{int(v):+d}%" if v else "0%" for v in xticks], fontsize=11)
     ax.set_xlim(-x_lim, x_lim)
     ax.axvline(0, color="#d9a3a3", linestyle=(0, (2, 2)), linewidth=0.65, alpha=0.75, zorder=1.4)
     ax.set_ylim(-0.6, len(panel_order) - 0.4)
@@ -140,9 +142,9 @@ def _plot_impact_premium_panel(ax, df_uoa_m):
         "D": "Panel D:\nHumanities",
     }
     ax.set_yticks(y_base)
-    ax.set_yticklabels([panel_label_map.get(p, f"Panel {p}") for p in panel_order], fontsize=11)
+    ax.set_yticklabels([panel_label_map.get(p, f"Panel {p}") for p in panel_order], fontsize=12)
     ax.set_xlabel("Impact - Output (Women's Share)\n(At the UoA Level)", fontsize=AXIS_LABEL_SIZE)
-    ax.set_title("c.", loc="left", fontweight="bold", fontsize=17)
+    ax.set_title("c.", loc="left", fontweight="bold", fontsize=18)
 
     legend_elements_b = [
         Patch(facecolor="white", edgecolor="k", linewidth=0.9, label="IQR Box"),
@@ -192,7 +194,7 @@ def _plot_impact_premium_panel(ax, df_uoa_m):
         handles=legend_elements_b,
         loc="lower left",
         ncol=1,
-        fontsize=8,
+        fontsize=9,
         frameon=True,
         edgecolor="k",
         facecolor=(1, 1, 1, 0.95),
@@ -226,7 +228,7 @@ def _plot_uoa_scatter(ax, df_uoa_m, show_unit_names: bool):
         0.05,
         f"Mean Diff: {mean_diff_uoa:.3f}\nImpact > Output: {n_more_output_uoa}",
         transform=ax.transAxes,
-        fontsize=8,
+        fontsize=9,
         bbox=dict(facecolor="white", alpha=1),
     )
 
@@ -236,7 +238,7 @@ def _plot_uoa_scatter(ax, df_uoa_m, show_unit_names: bool):
     ax.set_yticks(np.linspace(0, 1, 6))
     ax.set_xlabel("Women's Share (Impact)", fontsize=AXIS_LABEL_SIZE)
     ax.set_ylabel("Women's Share (Outputs)", fontsize=AXIS_LABEL_SIZE)
-    ax.set_title("b.", loc="left", fontweight="bold", fontsize=17)
+    ax.set_title("b.", loc="left", fontweight="bold", fontsize=18)
 
     legend_elements_uoa = [
         Patch(facecolor=PANEL_COLORS["A"], edgecolor="k", label="Panel A"),
@@ -249,7 +251,7 @@ def _plot_uoa_scatter(ax, df_uoa_m, show_unit_names: bool):
         title="Main REF Panel",
         loc="upper left",
         frameon=True,
-        fontsize=8,
+        fontsize=9,
         edgecolor="k",
         facecolor=(1, 1, 1, 1),
         framealpha=1.0,
@@ -276,7 +278,7 @@ def _plot_uoa_scatter(ax, df_uoa_m, show_unit_names: bool):
         xy=(_x_max, _y_max),
         xytext=(0.60, 0.85),
         textcoords="axes fraction",
-        fontsize=11,
+        fontsize=12,
         ha="center",
         va="center",
         arrowprops=dict(arrowstyle="->", lw=1.1, color="k", connectionstyle="arc3,rad=0.5"),
@@ -288,7 +290,7 @@ def _plot_uoa_scatter(ax, df_uoa_m, show_unit_names: bool):
         xy=(_x_min, _y_min),
         xytext=(0.50, 0.185),
         textcoords="axes fraction",
-        fontsize=11,
+        fontsize=12,
         ha="center",
         va="center",
         arrowprops=dict(arrowstyle="->", lw=1.1, color="k", connectionstyle="arc3,rad=-0.25"),
@@ -405,7 +407,7 @@ def _plot_uoa_percent_bars(ax, df_uoa_m, uoa_label_map: Dict[int, str]):
         labels=[f"{val * 100:.1f}%" for val in values],
         padding=4,
         label_type="edge",
-        fontsize=10,
+        fontsize=11,
     )
 
     ax.set_yticks(y_pos)
@@ -419,7 +421,7 @@ def _plot_uoa_percent_bars(ax, df_uoa_m, uoa_label_map: Dict[int, str]):
     x_max = values.max() + 0.10 if len(values) else 1.0
     ax.set_xlim(0, max(0.35, min(1.1, x_max)))
     ax.set_xlabel("Women's Share (Impact)", fontsize=AXIS_LABEL_SIZE)
-    ax.set_title("a.", loc="left", x=-0.03, fontweight="bold", fontsize=17)
+    ax.set_title("a.", loc="left", x=-0.03, fontweight="bold", fontsize=18)
     if len(df_plot):
         ax.set_ylim(-0.6 * row_spacing, y_pos[-1] + 0.6 * row_spacing)
     else:
@@ -503,7 +505,7 @@ def _plot_panel_violins(ax, df_uoa_m):
         label.set_ha("left")
         label.set_rotation(90)
     ax.set_xlabel("Women's Share\n(At the UoA Level)", fontsize=AXIS_LABEL_SIZE)
-    ax.set_title("b.", loc="left", x=-0.03, fontweight="bold", fontsize=17)
+    ax.set_title("b.", loc="left", x=-0.03, fontweight="bold", fontsize=18)
 
     legend_elements_c = [
         Patch(
@@ -523,7 +525,7 @@ def _plot_panel_violins(ax, df_uoa_m):
     ax.legend(
         handles=legend_elements_c,
         loc="lower left",
-        fontsize=8,
+        fontsize=9,
         frameon=True,
         edgecolor="k",
         facecolor=(1, 1, 1, 0.95),
@@ -587,7 +589,7 @@ def _plot_ratio(ax, df_uoa_m, show_unit_names: bool, uoa_label_map: Dict[int, st
         zorder=2,
     )
 
-    ax.set_title("d.", loc="left", fontweight="bold", fontsize=17)
+    ax.set_title("d.", loc="left", fontweight="bold", fontsize=18)
     ax.set_ylabel("Impact/Output", fontsize=AXIS_LABEL_SIZE)
     ax.set_xlabel("")
     ax.grid(linestyle="--", color="k", alpha=0.15)
@@ -596,9 +598,9 @@ def _plot_ratio(ax, df_uoa_m, show_unit_names: bool, uoa_label_map: Dict[int, st
     ax.set_xticklabels(
         [_format_uoa_label(num, uoa_label_map) for num in ratio_series.index],
         rotation=90,
-        fontsize=7,
+        fontsize=8,
     )
-    ax.tick_params(axis="y", labelsize=11)
+    ax.tick_params(axis="y", labelsize=12)
     ax.yaxis.tick_right()
     ax.yaxis.set_label_position("right")
 
@@ -611,7 +613,7 @@ def _plot_ratio(ax, df_uoa_m, show_unit_names: bool, uoa_label_map: Dict[int, st
         loc="upper right",
         frameon=True,
         ncol=1,
-        fontsize=8,
+        fontsize=9,
         edgecolor="k",
         facecolor=(1, 1, 1, 1),
         framealpha=1.0,
@@ -625,14 +627,14 @@ def _style_axes(fig, ax1, ax2, ax3, ax4):
         ax.spines["top"].set_visible(False)
         for spine in ax.spines.values():
             spine.set_linewidth(SPINE_LW)
-        ax.tick_params(axis="both", which="major", labelsize=13)
+        ax.tick_params(axis="both", which="major", labelsize=14)
 
     # b (right-top): only visible y-axis for b/c pair, on the right
     ax1.spines["left"].set_visible(False)
     ax1.spines["right"].set_visible(True)
     ax1.yaxis.tick_right()
     ax1.yaxis.set_label_position("right")
-    ax1.tick_params(axis="y", labelsize=11, pad=3)
+    ax1.tick_params(axis="y", labelsize=12, pad=3)
     for label in ax1.get_yticklabels():
         label.set_multialignment("center")
         label.set_ha("left")
@@ -660,13 +662,28 @@ def _style_axes(fig, ax1, ax2, ax3, ax4):
     ax3.grid(False)
     ax4.grid(False)
 
-    ax4.tick_params(axis="x", labelrotation=90, labelsize=9)
+    ax4.tick_params(axis="x", labelrotation=90, labelsize=10)
 
     ax2.xaxis.set_major_formatter(fmt)
     ax2.set_xlabel("Women's Share\n(At the UoA Level)", fontsize=AXIS_LABEL_SIZE)
     ax3.xaxis.set_major_formatter(fmt)
     ax3.set_ylabel("")
-    ax3.tick_params(axis="y", labelsize=10, pad=6)
+    ax3.tick_params(axis="y", labelsize=11, pad=6)
+
+
+def _bump_all_text_sizes(fig: plt.Figure, points: float = 1.0) -> None:
+    """Increase every rendered text object in Figure 1, including legend titles."""
+    fig.canvas.draw()
+    for text in fig.findobj(match=Text):
+        text.set_fontsize(text.get_fontsize() + points)
+
+
+def _bump_legend_text_sizes(fig: plt.Figure, points: float = 1.0) -> None:
+    """Increase only legend labels and titles."""
+    for legend in fig.findobj(match=Legend):
+        for text in legend.get_texts():
+            text.set_fontsize(text.get_fontsize() + points)
+        legend.get_title().set_fontsize(legend.get_title().get_fontsize() + points)
 
 
 
@@ -685,7 +702,7 @@ def _annotate_max_impact(df_uoa_m, ax2, show_unit_names: bool):
         xy=(_x_max_imp, _y_max_imp),
         xytext=(0.85, 0.45),
         textcoords="axes fraction",
-        fontsize=11,
+        fontsize=12,
         ha="center",
         va="center",
         arrowprops=dict(arrowstyle="->", lw=1.1, color="k", connectionstyle="arc3,rad=+0.3"),
@@ -708,6 +725,8 @@ def plot_figure_one(df_ics, df_uoa_m, show_unit_names: bool = True) -> Tuple[plt
     for ax in (ax1, ax2, ax3, ax4):
         ax.set_title(ax.get_title(), fontweight="bold")
     _style_axes(fig, ax1, ax2, ax3, ax4)
+    _bump_all_text_sizes(fig, points=1.0)
+    _bump_legend_text_sizes(fig, points=1.0)
     return fig, (ax1, ax2, ax3, ax4)
 
 
