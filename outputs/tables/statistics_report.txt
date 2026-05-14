@@ -94,15 +94,15 @@ Universities with highest female Impact (ICS) proportions:
                     Institution name  pct_female_ics  pct_female_output
       Stranmillis University College        1.000000           0.741379
               Royal College of Music        0.800000           0.618182
-Queen Margaret University, Edinburgh        0.714286           0.622715
           Courtauld Institute of Art        0.714286           0.730769
+Queen Margaret University, Edinburgh        0.714286           0.622715
               The Metanoia Institute        0.666667           0.500000
 
 Universities with lowest female Impact (ICS) proportions:
                                Institution name  pct_female_ics  pct_female_output
+              Guildhall School of Music & Drama        0.000000           0.181818
 Rose Bruford College of Theatre and Performance        0.000000           0.428571
  Trinity Laban Conservatoire of Music and Dance        0.000000           0.692308
-              Guildhall School of Music & Drama        0.000000           0.181818
                             Falmouth University        0.176471           0.315068
    The Royal Central School of Speech and Drama        0.200000           0.585366
 
