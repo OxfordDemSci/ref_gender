@@ -5,6 +5,7 @@ from typing import Iterable, Tuple, Sequence, List
 import matplotlib.pyplot as plt
 from matplotlib.ticker import PercentFormatter
 from matplotlib.lines import Line2D
+from matplotlib.text import Text
 from matplotlib import colors as mcolors
 from matplotlib.patches import PathPatch
 from matplotlib.path import Path as MplPath
@@ -63,6 +64,20 @@ IMPACT_DOMAIN_VARS = (
     "llm_startup",
     "llm_charity",
 )
+FIGURE_TWO_SIZE = (14, 10.08)
+FIGURE_TWO_FONT_BUMP_POINTS = 3.0
+FIGURE_TWO_BRACE_LABEL_X = -0.145
+
+
+def _bump_all_text_sizes(fig: plt.Figure, points: float) -> None:
+    """Increase every rendered text artist in a figure by a fixed number of points."""
+    seen: set[int] = set()
+    for text in fig.findobj(match=Text):
+        text_id = id(text)
+        if text_id in seen:
+            continue
+        seen.add(text_id)
+        text.set_fontsize(text.get_fontsize() + points)
 
 
 def load_llm_tables(data_root: Path = DEFAULT_DATA_ROOT, panel_order: PanelOrder = ("A", "B", "C", "D")) -> Tuple[pd.DataFrame, pd.DataFrame]:
@@ -922,7 +937,7 @@ def plot_combined_figure(
     fig, (ax_panel, ax_coef) = plt.subplots(
         1,
         2,
-        figsize=(14, 7),
+        figsize=FIGURE_TWO_SIZE,
         gridspec_kw={"width_ratios": [1.1, 1]},
     )
 
@@ -932,7 +947,7 @@ def plot_combined_figure(
         coef_df,
         ordered_var_order,
         MODEL_COLORS,
-        brace_label_x_override=-0.125,
+        brace_label_x_override=FIGURE_TWO_BRACE_LABEL_X,
         marker_alpha=1.0,
         whisker_alpha=1.0,
     )
@@ -958,6 +973,7 @@ def plot_combined_figure(
     ax_panel.spines["right"].set_visible(False)
     ax_panel.yaxis.set_ticks_position("left")
     ax_panel.tick_params(axis="y", which="both", labelright=False, labelleft=True, right=False, left=True, length=6)
+    _bump_all_text_sizes(fig, FIGURE_TWO_FONT_BUMP_POINTS)
     fig.tight_layout()
     return fig, (ax_coef, ax_panel)
 
