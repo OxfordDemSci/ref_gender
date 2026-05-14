@@ -81,7 +81,16 @@ def read_table(path: Path | str, **kwargs) -> pd.DataFrame:
     path = Path(path)
     suffix = path.suffix.lower()
     if suffix == ".parquet":
-        return pd.read_parquet(path, **kwargs)
+        try:
+            return pd.read_parquet(path, **kwargs)
+        except ImportError as exc:
+            fallback_csv = path.with_suffix(".csv")
+            if fallback_csv.exists():
+                return pd.read_csv(fallback_csv, **kwargs)
+            raise ImportError(
+                f"Unable to read parquet file {path} because no parquet engine is installed, "
+                f"and CSV fallback {fallback_csv} was not found."
+            ) from exc
     if suffix == ".csv":
         return pd.read_csv(path, **kwargs)
     if suffix == ".zip":
