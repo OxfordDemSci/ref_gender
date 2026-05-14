@@ -1,4 +1,5 @@
 from pathlib import Path
+import pickle
 from typing import Dict, Optional, Tuple, Iterable, List
 
 import numpy as np
@@ -232,6 +233,193 @@ def _llm_panel_table(df_ics: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _physics_vs_chemistry_table(
+    df_ics: pd.DataFrame,
+    model_path: Path,
+    out_dir: Path,
+) -> pd.DataFrame:
+    """
+    Compare Physics and Chemistry domain mix against Model 3 topic coefficients.
+
+    For each llm_* impact domain, count positive domain flags in UoA 9 (Physics)
+    and UoA 8 (Chemistry), then attach both OLS (3) and GLM (3) coefficients
+    from the current regression artifact. The final summary row keeps the
+    OLS-based percentage-point prediction used in the original table format.
+    """
+    topic_labels = {
+        "llm_charity": "Charity",
+        "llm_nhs": "NHS",
+        "llm_museum": "Museum",
+        "llm_school": "School",
+        "llm_legislation": "Legislation",
+        "llm_heritage": "Heritage",
+        "llm_software": "Software",
+        "llm_startup": "Startup",
+        "llm_patent": "Patent",
+        "llm_manufacturing": "Manufacturing",
+        "llm_drug_trial": "Drug Trial",
+    }
+    topic_cols = list(topic_labels)
+
+    missing_topics = [col for col in topic_cols if col not in df_ics.columns]
+    if missing_topics:
+        raise ValueError(f"Missing LLM domain columns required for physics_vs_chemistry: {missing_topics}")
+    model_path = Path(model_path)
+    if not model_path.exists():
+        raise FileNotFoundError(
+            f"Missing regression model artifact for physics_vs_chemistry table: {model_path}. "
+            "Run step05_build_regression_models before step08_build_statistics."
+        )
+
+    with model_path.open("rb") as f:
+        payload = pickle.load(f)
+    coef_df = payload["coef_df"]
+
+    def _coef_lookup(model_name: str) -> pd.Series:
+        lookup = (
+            coef_df.loc[
+                (coef_df["model"] == model_name) & (coef_df["variable"].isin(topic_cols)),
+                ["variable", "coef"],
+            ]
+            .drop_duplicates(subset=["variable"], keep="last")
+            .set_index("variable")["coef"]
+        )
+        missing_coefs = [col for col in topic_cols if col not in lookup.index]
+        if missing_coefs:
+            raise ValueError(f"{model_name} coefficients missing from {model_path}: {missing_coefs}")
+        return lookup
+
+    ols_coef_lookup = _coef_lookup("OLS (3)")
+    glm_coef_lookup = _coef_lookup("GLM (3)")
+
+    df = df_ics.copy()
+    df["Unit of assessment number"] = pd.to_numeric(df["Unit of assessment number"], errors="coerce")
+    for col in topic_cols:
+        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+
+    physics = df[df["Unit of assessment number"] == 9]
+    chemistry = df[df["Unit of assessment number"] == 8]
+    total_physics = int(len(physics))
+    total_chemistry = int(len(chemistry))
+
+    rows = []
+    for col in topic_cols:
+        rows.append(
+            {
+                "Impact domain": topic_labels[col],
+                "llm_column": col,
+                "Physics (UoA 9)": int((physics[col] > 0).sum()),
+                "Chemistry (UoA 8)": int((chemistry[col] > 0).sum()),
+                "Delta Women (pp, OLS)": float(ols_coef_lookup[col] * 100),
+                "Delta Women (log-odds, GLM)": float(glm_coef_lookup[col]),
+            }
+        )
+    table = pd.DataFrame(rows).sort_values("Delta Women (pp, OLS)", ascending=False).reset_index(drop=True)
+
+    physics_pred = (
+        table["Physics (UoA 9)"].mul(table["Delta Women (pp, OLS)"]).sum() / total_physics
+        if total_physics else np.nan
+    )
+    chemistry_pred = (
+        table["Chemistry (UoA 8)"].mul(table["Delta Women (pp, OLS)"]).sum() / total_chemistry
+        if total_chemistry else np.nan
+    )
+    physics_pred_glm = (
+        table["Physics (UoA 9)"].mul(table["Delta Women (log-odds, GLM)"]).sum() / total_physics
+        if total_physics else np.nan
+    )
+    chemistry_pred_glm = (
+        table["Chemistry (UoA 8)"].mul(table["Delta Women (log-odds, GLM)"]).sum() / total_chemistry
+        if total_chemistry else np.nan
+    )
+    table["physics_domain_share"] = table["Physics (UoA 9)"] / total_physics if total_physics else np.nan
+    table["chemistry_domain_share"] = table["Chemistry (UoA 8)"] / total_chemistry if total_chemistry else np.nan
+
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for legacy_path in (out_dir / "physics_vs_chemistry.csv", out_dir / "physics_vs_chemistry_detail.csv"):
+        legacy_path.unlink(missing_ok=True)
+
+    display_rows = table[
+        [
+            "Impact domain",
+            "Physics (UoA 9)",
+            "Chemistry (UoA 8)",
+            "Delta Women (pp, OLS)",
+            "Delta Women (log-odds, GLM)",
+        ]
+    ].copy()
+    display_rows["Delta Women (pp, OLS)"] = display_rows["Delta Women (pp, OLS)"].map(lambda v: f"{v:+.1f}%")
+    display_rows["Delta Women (log-odds, GLM)"] = display_rows["Delta Women (log-odds, GLM)"].map(lambda v: f"{v:+.2f}")
+    display_rows = pd.concat(
+        [
+            display_rows,
+            pd.DataFrame(
+                [
+                    {
+                        "Impact domain": "Total ICS (UoA)",
+                        "Physics (UoA 9)": str(total_physics),
+                        "Chemistry (UoA 8)": str(total_chemistry),
+                        "Delta Women (pp, OLS)": "",
+                        "Delta Women (log-odds, GLM)": "",
+                    },
+                    {
+                        "Impact domain": "Domain predicted Δ Women (OLS)",
+                        "Physics (UoA 9)": f"{physics_pred:+.1f}%",
+                        "Chemistry (UoA 8)": f"{chemistry_pred:+.1f}%",
+                        "Delta Women (pp, OLS)": "",
+                        "Delta Women (log-odds, GLM)": "",
+                    },
+                    {
+                        "Impact domain": "Domain predicted Δ log-odds (GLM)",
+                        "Physics (UoA 9)": f"{physics_pred_glm:+.2f}",
+                        "Chemistry (UoA 8)": f"{chemistry_pred_glm:+.2f}",
+                        "Delta Women (pp, OLS)": "",
+                        "Delta Women (log-odds, GLM)": "",
+                    },
+                ]
+            ),
+        ],
+        ignore_index=True,
+    )
+    latex_rows = display_rows.copy()
+    latex_rows["Delta Women (pp, OLS)"] = latex_rows["Delta Women (pp, OLS)"].str.replace("%", r"\%", regex=False)
+    total_mask = latex_rows["Impact domain"].eq("Total ICS (UoA)")
+    predicted_mask = latex_rows["Impact domain"].eq("Domain predicted Δ Women (OLS)")
+    predicted_glm_mask = latex_rows["Impact domain"].eq("Domain predicted Δ log-odds (GLM)")
+    latex_rows.loc[total_mask, "Impact domain"] = r"\textbf{Total ICS (UoA)}"
+    latex_rows.loc[total_mask, "Physics (UoA 9)"] = rf"\textbf{{{total_physics}}}"
+    latex_rows.loc[total_mask, "Chemistry (UoA 8)"] = rf"\textbf{{{total_chemistry}}}"
+    latex_rows.loc[predicted_mask, "Impact domain"] = r"\textbf{Domain predicted $\Delta$ Women (OLS)}"
+    latex_rows.loc[predicted_mask, "Physics (UoA 9)"] = rf"\textbf{{{physics_pred:+.1f}\%}}"
+    latex_rows.loc[predicted_mask, "Chemistry (UoA 8)"] = rf"\textbf{{{chemistry_pred:+.1f}\%}}"
+    latex_rows.loc[predicted_glm_mask, "Impact domain"] = r"\textbf{Domain predicted $\Delta$ log-odds (GLM)}"
+    latex_rows.loc[predicted_glm_mask, "Physics (UoA 9)"] = rf"\textbf{{{physics_pred_glm:+.2f}}}"
+    latex_rows.loc[predicted_glm_mask, "Chemistry (UoA 8)"] = rf"\textbf{{{chemistry_pred_glm:+.2f}}}"
+
+    body = latex_rows.to_latex(
+        index=False,
+        escape=False,
+        column_format="lrrrr",
+        caption=(
+            "Distribution of impact domains in Physics (UoA 9) and Chemistry (UoA 8), "
+            "with associated change in women's share from OLS Model 3 "
+            "and log-odds coefficients from GLM Model 3."
+        ),
+        label="tab:physics_vs_chemistry",
+    )
+    body = body.replace(r"\textbf{Total ICS (UoA)}", "\\midrule\n\\textbf{Total ICS (UoA)}", 1)
+    (out_dir / "physics_vs_chemistry.tex").write_text(body, encoding="utf-8")
+
+    table.attrs["total_physics_ics"] = total_physics
+    table.attrs["total_chemistry_ics"] = total_chemistry
+    table.attrs["physics_domain_predicted_delta_women_pp"] = physics_pred
+    table.attrs["chemistry_domain_predicted_delta_women_pp"] = chemistry_pred
+    table.attrs["physics_domain_predicted_delta_log_odds_glm"] = physics_pred_glm
+    table.attrs["chemistry_domain_predicted_delta_log_odds_glm"] = chemistry_pred_glm
+    return table
+
+
 def build_and_save_summary_tables(
     df_ics: pd.DataFrame,
     df_output: pd.DataFrame,
@@ -352,11 +540,18 @@ def build_and_save_summary_tables(
     llm_panel_df = _llm_panel_table(df_ics)
     _table_to_latex(llm_panel_df, out_dir / "llm_panel_summary.tex", column_format="llrrr")
 
+    physics_vs_chemistry_df = _physics_vs_chemistry_table(
+        df_ics=df_ics,
+        model_path=out_dir.parent / "models" / "regression_results.pkl",
+        out_dir=out_dir,
+    )
+
     return {
         "panel": panel_df,
         "uoa": uoa_df,
         "llm": llm_df,
         "llm_panel": llm_panel_df,
+        "physics_vs_chemistry": physics_vs_chemistry_df,
     }
 
 
