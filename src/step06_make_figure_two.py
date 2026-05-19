@@ -171,12 +171,12 @@ def main(argv: list[str] | None = None) -> int:
         "figure_pdf": fig_dir / "figure_two.pdf",
         "figure_png": fig_dir / "figure_two.png",
         "figure_svg": fig_dir / "figure_two.svg",
-        "supplementary_figure_2_pdf": fig_dir / "supplementary_figure_2.pdf",
-        "supplementary_figure_2_png": fig_dir / "supplementary_figure_2.png",
-        "supplementary_figure_2_svg": fig_dir / "supplementary_figure_2.svg",
-        "supplementary_figure_3_pdf": fig_dir / "supplementary_figure_3.pdf",
-        "supplementary_figure_3_png": fig_dir / "supplementary_figure_3.png",
-        "supplementary_figure_3_svg": fig_dir / "supplementary_figure_3.svg",
+        "supp_figure_3_pdf": fig_dir / "supp_figure_3.pdf",
+        "supp_figure_3_png": fig_dir / "supp_figure_3.png",
+        "supp_figure_3_svg": fig_dir / "supp_figure_3.svg",
+        "supp_figure_4_pdf": fig_dir / "supp_figure_4.pdf",
+        "supp_figure_4_png": fig_dir / "supp_figure_4.png",
+        "supp_figure_4_svg": fig_dir / "supp_figure_4.svg",
     }
     try:
         openai_cfg = config.get("openai", {})
@@ -202,23 +202,23 @@ def main(argv: list[str] | None = None) -> int:
         print("[step06] Writing Figure 2 outputs (pdf/svg/png)...")
         save_figure(fig, fig_dir, basename="figure_two")
         plt.close(fig)
-        print("[step06] Rendering supplementary figure 2 (GLM coefficients only)...")
+        print("[step06] Rendering supp figure 3 (GLM coefficients only)...")
         supp_fig, _supp_ax = plot_supplementary_figure_two(coef_df, var_order)
-        print("[step06] Writing supplementary figure 2 outputs (pdf/svg/png)...")
-        save_figure(supp_fig, fig_dir, basename="supplementary_figure_2")
+        print("[step06] Writing supp figure 3 outputs (pdf/svg/png)...")
+        save_figure(supp_fig, fig_dir, basename="supp_figure_3")
         plt.close(supp_fig)
         print("[step06] Fitting UoA-based regressions for supplementary figure 3...")
         uoa_coef_df, uoa_var_order, uoa_discipline_vars, uoa_label_overrides = load_uoa_regression(paths.data_dir)
         print(f"[step06] UoA regression rows: {len(uoa_coef_df)}")
-        print("[step06] Rendering supplementary figure 3 (UoA controls; OLS + GLM)...")
+        print("[step06] Rendering supp figure 4 (UoA controls; OLS + GLM)...")
         supp3_fig, _supp3_axes = plot_supplementary_figure_three(
             uoa_coef_df,
             uoa_var_order,
             discipline_vars=uoa_discipline_vars,
             label_overrides=uoa_label_overrides,
         )
-        print("[step06] Writing supplementary figure 3 outputs (pdf/svg/png)...")
-        save_figure(supp3_fig, fig_dir, basename="supplementary_figure_3")
+        print("[step06] Writing supp figure 4 outputs (pdf/svg/png)...")
+        save_figure(supp3_fig, fig_dir, basename="supp_figure_4")
         plt.close(supp3_fig)
         row_counts = {
             "coef_rows": int(len(coef_df)),

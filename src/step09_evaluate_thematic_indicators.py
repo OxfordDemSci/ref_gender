@@ -39,6 +39,13 @@ METHOD_DISPLAY = {
     "llm54": "GPT-5.4",
     "llm55": "GPT-5.5",
 }
+METHOD_SHORT_DISPLAY = {
+    "regex": "Regex",
+    "llmmini": "5-mini",
+    "llm51": "5.1",
+    "llm54": "5.4",
+    "llm55": "5.5",
+}
 PANEL_ORDER = ("A", "B", "C", "D")
 PANEL_DISPLAY_LABELS = {
     "A": "Panel A:\nLife Sciences",
@@ -129,6 +136,29 @@ def _format_topic_label(topic: str) -> str:
     if str(topic).strip().lower() == "nhs":
         return "NHS"
     return str(topic).replace("_", " ").title()
+
+
+def _format_pair_short_label(pair_id: object) -> str:
+    pair_key = str(pair_id)
+    if pair_key not in PAIR_SPECS:
+        return pair_key
+    _label, left_prefix, right_prefix = PAIR_SPECS[pair_key]
+    left = METHOD_SHORT_DISPLAY.get(left_prefix, METHOD_DISPLAY.get(left_prefix, left_prefix))
+    right = METHOD_SHORT_DISPLAY.get(right_prefix, METHOD_DISPLAY.get(right_prefix, right_prefix))
+    return f"{left} vs {right}"
+
+
+def _format_pair_two_line_label(pair_id: object, *, short: bool = True) -> str:
+    pair_key = str(pair_id)
+    if pair_key not in PAIR_SPECS:
+        return pair_key
+    _label, left_prefix, right_prefix = PAIR_SPECS[pair_key]
+    display = METHOD_SHORT_DISPLAY if short else METHOD_DISPLAY
+    left = display.get(left_prefix, METHOD_DISPLAY.get(left_prefix, left_prefix))
+    right = display.get(right_prefix, METHOD_DISPLAY.get(right_prefix, right_prefix))
+    if len(str(left)) <= len(str(right)):
+        return f"{left} vs.\n{right}"
+    return f"{left}\nvs. {right}"
 
 
 def _ensure_panel_column(df: pd.DataFrame) -> pd.DataFrame:
@@ -230,12 +260,13 @@ def _plot_single_topic_panel_bar(
         ax=ax,
     )
 
-    ax.set_title(title, loc=title_loc, fontweight="bold", fontsize=15)
+    ax.set_title(title, loc=title_loc, fontweight="bold", fontsize=29)
     ax.set_ylabel("")
-    ax.set_xlabel(f"Share of Women ({approach_label})", fontsize=13)
+    ax.set_xlabel(f"Share of Women ({approach_label})", fontsize=21)
     ax.set_xlim(0, x_max)
     ax.xaxis.set_major_formatter(PercentFormatter(xmax=100))
-    ax.tick_params(axis="both", labelsize=11)
+    ax.tick_params(axis="x", labelsize=21)
+    ax.tick_params(axis="y", labelsize=19)
     ax.set_axisbelow(True)
     ax.xaxis.grid(True, which="major", linestyle="--", linewidth=0.75, alpha=0.32)
     ax.yaxis.grid(True, which="major", linestyle="--", linewidth=0.75, alpha=0.32)
@@ -256,7 +287,8 @@ def _plot_single_topic_panel_bar(
             handles=handles,
             labels=legend_labels,
             title="Main REF Panel",
-            fontsize=9,
+            fontsize=13,
+            title_fontsize=13,
             frameon=True,
             edgecolor="k",
             facecolor=(1, 1, 1, 1),
@@ -273,19 +305,21 @@ def _plot_single_topic_panel_bar(
 def plot_supplementary_figure_one_thematic_panels(
     df: pd.DataFrame,
     topics: list[str],
-) -> tuple[plt.Figure, tuple[plt.Axes, plt.Axes, plt.Axes]]:
+) -> tuple[plt.Figure, tuple[plt.Axes, plt.Axes, plt.Axes, plt.Axes]]:
     """
-    Supplementary Figure 1:
+    Supplementary Figure 2:
       - a) Regex topic female-share by REF panel
-      - b) GPT-5.5 topic female-share by REF panel
-      - c) GPT-5-nano topic female-share by REF panel
+      - b) GPT-5-nano topic female-share by REF panel
+      - c) GPT-5.1 topic female-share by REF panel
+      - d) GPT-5.4 topic female-share by REF panel
     """
     _prep_pub_style()
     topic_order = _topic_order_labels(df, topics, reference_prefix="llm55")
     methods = [
         ("regex", "a.", "Regex"),
-        ("llm55", "b.", "GPT-5.5"),
-        ("llmmini", "c.", "GPT-5-nano"),
+        ("llmmini", "b.", "GPT-5-nano"),
+        ("llm51", "c.", "GPT-5.1"),
+        ("llm54", "d.", "GPT-5.4"),
     ]
 
     method_tables: dict[str, pd.DataFrame] = {
@@ -299,8 +333,9 @@ def plot_supplementary_figure_one_thematic_panels(
     max_val = max(float(tbl["pct_female"].max(skipna=True)) for tbl in method_tables.values())
     x_max = max(60.0, np.ceil((max_val + 2.0) / 5.0) * 5.0)
 
-    fig, axes = plt.subplots(1, 3, figsize=(21, 7), sharey=True)
-    for i, (ax, (prefix, title, approach_label)) in enumerate(zip(axes, methods)):
+    fig, axes = plt.subplots(2, 2, figsize=(21, 18), sharex=False, sharey=True)
+    flat_axes = axes.flatten()
+    for i, (ax, (prefix, title, approach_label)) in enumerate(zip(flat_axes, methods)):
         _plot_single_topic_panel_bar(
             ax,
             method_tables[prefix],
@@ -308,13 +343,13 @@ def plot_supplementary_figure_one_thematic_panels(
             title=title,
             approach_label=approach_label,
             x_max=x_max,
-            show_legend=(i == 2),
+            show_legend=(i == len(methods) - 1),
             title_loc="left",
         )
-    axes[1].set_ylabel("")
-    axes[2].set_ylabel("")
-    fig.tight_layout()
-    return fig, (axes[0], axes[1], axes[2])
+        ax.tick_params(axis="x", labelbottom=True)
+        ax.xaxis.label.set_visible(True)
+    fig.tight_layout(h_pad=4.0, w_pad=1.8)
+    return fig, tuple(flat_axes)
 
 
 def discover_topics(df: pd.DataFrame) -> list[str]:
@@ -872,7 +907,7 @@ def plot_model_comparison_figure(
         raise ValueError("Pairwise agreement table is empty; cannot draw comparison figure.")
 
     _prep_pub_style()
-    fig, axes = plt.subplots(2, 2, figsize=(16, 11))
+    fig, axes = plt.subplots(2, 2, figsize=(17, 13), gridspec_kw={"height_ratios": [1.0, 1.15]})
     ax_a, ax_b, ax_c, ax_d = axes.flatten()
 
     # a) ECDF of thematic breadth (moved from distribution figure)
@@ -906,11 +941,11 @@ def plot_model_comparison_figure(
             label=src,
             ax=ax_a,
         )
-    ax_a.set_title("a.", loc="left", fontweight="bold", fontsize=17)
-    ax_a.set_xlabel("Thematic Breadth per ICS (Number of Positive Topics)", fontsize=14)
-    ax_a.set_ylabel("ECDF", fontsize=14)
-    ax_a.tick_params(axis="both", labelsize=12)
-    ax_a.legend(frameon=True, edgecolor="k", fontsize=10, loc="lower right")
+    ax_a.set_title("a.", loc="left", fontweight="bold", fontsize=21)
+    ax_a.set_xlabel("Thematic Breadth per ICS (Number of Positive Topics)", fontsize=18)
+    ax_a.set_ylabel("ECDF", fontsize=18)
+    ax_a.tick_params(axis="both", labelsize=16)
+    ax_a.legend(frameon=True, edgecolor="k", fontsize=13, loc="lower right")
     ax_a.grid(False)
 
     # b) Topic-level pairwise agreement (point-range style)
@@ -950,17 +985,17 @@ def plot_model_comparison_figure(
         uniq.keys(),
         frameon=True,
         edgecolor="k",
-        fontsize=9,
+        fontsize=12,
         loc="upper left",
         bbox_to_anchor=(0.01, 0.99),
         borderaxespad=0.2,
     )
     ax_b.set_yticks(range(len(topic_order)))
     ax_b.set_yticklabels(topic_order)
-    ax_b.set_xlabel("Topic-Level Agreement (%)", fontsize=14)
-    ax_b.set_title("b.", loc="left", fontweight="bold", fontsize=17)
-    ax_b.tick_params(axis="both", labelsize=11)
-    ax_b.xaxis.set_major_formatter(PercentFormatter(xmax=100))
+    ax_b.set_xlabel("Topic-Level Agreement (%)", fontsize=18)
+    ax_b.set_title("b.", loc="left", fontweight="bold", fontsize=21)
+    ax_b.tick_params(axis="both", labelsize=15)
+    ax_b.xaxis.set_major_formatter(PercentFormatter(xmax=100, decimals=0))
     x_lo = max(0.0, float(bdf["agreement_pct"].min()) - 5.0)
     x_hi = min(100.0, float(bdf["agreement_pct"].max()) + 2.0)
     ax_b.set_xlim(x_lo, x_hi)
@@ -973,7 +1008,7 @@ def plot_model_comparison_figure(
     cdf["agreement_pct"] = cdf["agreement_rate_micro"] * 100.0
     cdf["pair_id"] = pd.Categorical(cdf["pair_id"], categories=PAIR_ORDER, ordered=True)
     cdf = cdf.sort_values(["agreement_pct", "pair_id"], ascending=[True, True]).reset_index(drop=True)
-    cdf["pair_multiline"] = cdf["pair"].astype(str).str.replace(" vs ", "\nvs.\n", regex=False)
+    cdf["pair_short"] = cdf["pair_id"].map(_format_pair_two_line_label)
 
     y = np.arange(len(cdf))
     x_vals = cdf["agreement_pct"].to_numpy()
@@ -986,55 +1021,69 @@ def plot_model_comparison_figure(
     ax_c.barh(y, x_vals, height=0.62, color=bar_colors, edgecolor="k", linewidth=0.35, zorder=2)
     for i, row in cdf.iterrows():
         val = float(row["agreement_pct"])
-        ax_c.text(val + 0.12, i, f"{val:.1f}%", va="center", ha="left", fontsize=9)
+        ax_c.text(val + 0.12, i, f"{val:.1f}%", va="center", ha="left", fontsize=14)
 
     ax_c.set_yticks(y)
-    ax_c.set_yticklabels(cdf["pair_multiline"].tolist())
-    ax_c.set_xlabel("Overall Pairwise Agreement (%)", fontsize=14)
-    ax_c.set_title("c.", loc="left", fontweight="bold", fontsize=17)
-    ax_c.tick_params(axis="both", labelsize=11)
+    ax_c.set_yticklabels(cdf["pair_short"].tolist())
+    ax_c.set_xlabel("Overall Pairwise Agreement (%)", fontsize=18)
+    ax_c.set_title("c.", loc="left", fontweight="bold", fontsize=21)
+    ax_c.tick_params(axis="x", labelsize=15)
+    ax_c.tick_params(axis="y", labelsize=15, pad=3)
     ax_c.set_xlim(x_min, x_max + 0.8)
-    ax_c.xaxis.set_major_formatter(PercentFormatter(xmax=100))
+    ax_c.xaxis.set_major_formatter(PercentFormatter(xmax=100, decimals=0))
     ax_c.grid(axis="x", color="0.9", linewidth=0.8, zorder=1)
 
-    # d) Disagreement profile by topic (line chart)
+    # d) Disagreement profile by topic and model pair (heatmap)
     ddf = bdf.pivot_table(
-        index="topic_label",
-        columns="pair_id",
+        index="pair_id",
+        columns="topic_label",
         values="disagreement_rate",
         aggfunc="mean",
         observed=False,
     )
-    ddf = ddf.reindex(topic_order)
-    x = np.arange(len(ddf.index))
-    for pair_id in PAIR_ORDER:
-        if pair_id not in ddf.columns:
-            continue
-        ax_d.plot(
-            x,
-            ddf[pair_id].to_numpy() * 100.0,
-            marker="o",
-            markersize=6.0,
-            linewidth=1.4,
-            color=PAIR_COLORS.get(pair_id, "#333333"),
-            markeredgecolor="k",
-            markeredgewidth=0.35,
-            label=PAIR_SPECS[pair_id][0],
-        )
-    ax_d.set_xticks(x)
-    ax_d.set_xticklabels(ddf.index.tolist(), rotation=45, ha="right")
-    ax_d.set_ylabel("Disagreement Rate (%)", fontsize=14)
-    ax_d.yaxis.set_major_formatter(PercentFormatter(xmax=100))
-    ax_d.set_title("d.", loc="left", fontweight="bold", fontsize=17)
-    ax_d.tick_params(axis="both", labelsize=10)
-    ax_d.legend(frameon=True, edgecolor="k", fontsize=9, loc="upper right")
+    ddf = ddf.reindex(
+        index=[pair_id for pair_id in PAIR_ORDER if pair_id in ddf.index],
+        columns=topic_order,
+    )
+    heatmap_data = ddf * 100.0
+    heatmap_vmax = float(np.nanmax(heatmap_data.to_numpy()))
+    heatmap_vmax = max(1.0, float(np.ceil(heatmap_vmax)))
+    sns.heatmap(
+        heatmap_data,
+        ax=ax_d,
+        cmap="viridis",
+        vmin=0.0,
+        vmax=heatmap_vmax,
+        linewidths=0.45,
+        linecolor="white",
+        cbar_kws={"label": "Disagreement Rate (%)", "shrink": 1.0},
+    )
+    pair_labels = [_format_pair_two_line_label(pair_id) for pair_id in heatmap_data.index]
+    ax_d.set_xticklabels(heatmap_data.columns.tolist(), rotation=45, ha="right")
+    ax_d.set_yticklabels(pair_labels, rotation=0)
+    ax_d.set_xlabel("Impact Domain", fontsize=18)
+    ax_d.set_ylabel("Model Pair", fontsize=18)
+    ax_d.set_title("d.", loc="left", fontweight="bold", fontsize=21)
+    ax_d.tick_params(axis="both", labelsize=13)
+    if ax_d.collections and ax_d.collections[0].colorbar is not None:
+        cbar = ax_d.collections[0].colorbar
+        cbar.ax.tick_params(labelsize=17)
+        cbar.ax.yaxis.set_major_formatter(PercentFormatter(xmax=100, decimals=0))
+        cbar.set_label("Disagreement Rate (%)", fontsize=18)
+        cbar.outline.set_edgecolor("k")
+        cbar.outline.set_linewidth(1.0)
 
     # Consistent major gridlines across all panels.
-    for ax in (ax_a, ax_b, ax_c, ax_d):
+    for ax in (ax_a, ax_b, ax_c):
         ax.set_axisbelow(True)
         ax.grid(True, which="major", axis="both", linestyle="--", linewidth=0.8, alpha=0.35)
+    ax_d.grid(False)
 
     sns.despine(fig=fig)
+    for spine in ax_d.spines.values():
+        spine.set_visible(True)
+        spine.set_edgecolor("k")
+        spine.set_linewidth(1.0)
     fig.tight_layout()
     return fig, (ax_a, ax_b, ax_c, ax_d)
 
@@ -1162,16 +1211,16 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--panel-bars-figure-stem",
         type=str,
-        default="outputs/figures/supplementary_figure_1",
+        default="outputs/figures/supp_figure_2",
         help=(
-            "Output stem for thematic bar-chart panels (Regex, GPT-5.5, GPT-5-nano) "
+            "Output stem for thematic bar-chart panels (Regex, GPT-5-nano, GPT-5.1, GPT-5.4) "
             "styled like Figure 2a (writes pdf/svg/png)."
         ),
     )
     parser.add_argument(
         "--comparison-figure-stem",
         type=str,
-        default="outputs/figures/supplementary_figure_4",
+        default="outputs/figures/sup_figure_1",
         help="Output stem for model comparison figure (writes pdf/svg/png).",
     )
     parser.add_argument(
