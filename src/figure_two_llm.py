@@ -42,6 +42,7 @@ except ImportError:  # pragma: no cover
 PanelOrder = Iterable[str]
 NON_VIOLIN_ALPHA = 0.65
 MEAN_LINE_WIDTH = 1.8
+MEAN_LINE_STYLE = "--"
 PANEL_DISPLAY_LABELS = {
     "A": "Panel A:\nLife Sciences",
     "B": "Panel B:\nPhysical Sciences",
@@ -830,7 +831,7 @@ def _plot_topic_female_share_panel(
     ax_panel.yaxis.set_label_position("left")
     handles, labels = ax_panel.get_legend_handles_labels()
     mean_color = "k"
-    mean_handle = Line2D([0], [0], color=mean_color, linestyle="-", linewidth=MEAN_LINE_WIDTH, label="Mean")
+    mean_handle = Line2D([0], [0], color=mean_color, linestyle=MEAN_LINE_STYLE, linewidth=MEAN_LINE_WIDTH, label="Mean")
     legend_labels = [PANEL_DISPLAY_LABELS.get(lbl, lbl) for lbl in labels]
     handles.append(mean_handle)
     legend_labels.append("Mean")
@@ -858,7 +859,7 @@ def _plot_topic_female_share_panel(
             ax_panel.plot(
                 [mean_val, mean_val],
                 [y - 0.5, y + 0.5],
-                linestyle="-",
+                linestyle=MEAN_LINE_STYLE,
                 color=mean_color,
                 linewidth=MEAN_LINE_WIDTH,
                 clip_on=False,
