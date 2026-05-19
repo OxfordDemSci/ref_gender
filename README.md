@@ -231,7 +231,7 @@ PY
 | 07 | `step07_make_table_one.py` | none | `outputs/tables/regression_results.tex` |
 | 08 | `step08_build_statistics.py` | none | `outputs/tables/statistics_report.txt`, summary `.tex` tables |
 | 09 | `step09_evaluate_thematic_indicators.py` | none | thematic diagnostics and comparison figures |
-| 10 | `step10_analyze_ics_text_gender.py` | none | `supplementary_figure_5.*`, word-association tables |
+| 10 | `step10_analyze_ics_text_gender.py` | none | `supp_figure_5.*`, word-association tables |
 
 ## Thematic Indicator Methods
 
@@ -263,11 +263,11 @@ Figures:
 
 - `outputs/figures/figure_one.{pdf,svg,png}`
 - `outputs/figures/figure_two.{pdf,svg,png}`
-- `outputs/figures/supplementary_figure_1.{pdf,svg,png}`
-- `outputs/figures/supplementary_figure_2.{pdf,svg,png}`
-- `outputs/figures/supplementary_figure_3.{pdf,svg,png}`
-- `outputs/figures/supplementary_figure_4.{pdf,svg,png}`
-- `outputs/figures/supplementary_figure_5.{pdf,svg,png}`
+- `outputs/figures/supp_figure_2.{pdf,svg,png}`
+- `outputs/figures/supp_figure_3.{pdf,svg,png}`
+- `outputs/figures/supp_figure_4.{pdf,svg,png}`
+- `outputs/figures/sup_figure_1.{pdf,svg,png}`
+- `outputs/figures/supp_figure_5.{pdf,svg,png}`
 
 Tables:
 
@@ -282,9 +282,9 @@ Tables:
 - `outputs/tables/thematic_pairwise_agreement_summary.csv`
 - `outputs/tables/thematic_topic_positive_rates.csv`
 - `outputs/tables/thematic_adjudication_sample.csv`
-- `outputs/tables/supplementary_figure_5_all.csv`
-- `outputs/tables/supplementary_figure_5_top_positive.csv`
-- `outputs/tables/supplementary_figure_5_top_negative.csv`
+- `outputs/tables/supp_figure_5_all.csv`
+- `outputs/tables/supp_figure_5_top_positive.csv`
+- `outputs/tables/supp_figure_5_top_negative.csv`
 
 Models:
 
