@@ -68,6 +68,8 @@ IMPACT_DOMAIN_VARS = (
 FIGURE_TWO_SIZE = (14, 10.08)
 FIGURE_TWO_FONT_BUMP_POINTS = 3.0
 FIGURE_TWO_BRACE_LABEL_X = -0.145
+SUPP_GLM_FIGURE_SIZE = (14.03, 7.245)
+SUPP_GLM_FONT_BUMP_POINTS = 1.0
 
 
 def _bump_all_text_sizes(fig: plt.Figure, points: float) -> None:
@@ -1037,8 +1039,8 @@ def plot_supplementary_figure_two(
     mpl.rcParams["axes.titleweight"] = "bold"
     plt.rcParams["axes.unicode_minus"] = False
 
-    # Single-panel GLM figure: same height as Figure 2, just slightly wider.
-    fig, ax = plt.subplots(1, 1, figsize=(12.2, 6.3))
+    # Single-panel GLM figure, scaled 15% above the previous 12.2 x 6.3 inch canvas.
+    fig, ax = plt.subplots(1, 1, figsize=SUPP_GLM_FIGURE_SIZE)
     ordered_var_order = _ordered_variables_for_coefficients(coef_df, var_order)
     _plot_glm_coefficients(
         ax,
@@ -1063,6 +1065,7 @@ def plot_supplementary_figure_two(
     ax.set_xlim(right=0.5)
     ax.tick_params(axis="y", which="both", labelleft=True, labelright=False, left=True, right=False, length=6)
     sns.despine(ax=ax, left=False, top=True, right=True, bottom=False)
+    _bump_all_text_sizes(fig, SUPP_GLM_FONT_BUMP_POINTS)
     fig.tight_layout(pad=0.2)
     return fig, ax
 
