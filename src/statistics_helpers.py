@@ -26,6 +26,10 @@ except ImportError:  # pragma: no cover
     from pipeline_io import read_table
 
 ALPHA = 0.05
+PANEL_D_UOA_LABEL_OVERRIDES = {
+    33: "Performing Arts",
+    34: "Communication, Cultural and Media Studies",
+}
 
 
 def load_statistics_data(data_root: Path = DEFAULT_DATA_ROOT):
@@ -81,6 +85,26 @@ def _table_to_latex(df: pd.DataFrame, path: Path, column_format: Optional[str] =
 def _round_sig(x: pd.Series, sig: int = 4) -> pd.Series:
     """Round a Series to the given significant figures."""
     return x.apply(lambda v: float(f"{v:.{sig}g}") if pd.notna(v) else v)
+
+
+def _latex_escape_text(value: object) -> str:
+    """Escape plain text for use in manually assembled LaTeX table rows."""
+    text = "" if pd.isna(value) else str(value)
+    replacements = {
+        "\\": r"\textbackslash{}",
+        "&": r"\&",
+        "%": r"\%",
+        "$": r"\$",
+        "#": r"\#",
+        "_": r"\_",
+        "{": r"\{",
+        "}": r"\}",
+        "~": r"\textasciitilde{}",
+        "^": r"\textasciicircum{}",
+    }
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+    return text
 
 
 def _panel_table(df_ics: pd.DataFrame, df_output: pd.DataFrame) -> pd.DataFrame:
@@ -174,6 +198,93 @@ def _uoa_table(df_ics: pd.DataFrame, df_output: pd.DataFrame) -> pd.DataFrame:
             }
         )
     return pd.DataFrame(rows)
+
+
+def _panel_d_unusual_domains_table(df_ics: pd.DataFrame, out_dir: Path) -> pd.DataFrame:
+    """
+    Count Panel D impact case studies classified as Patent or Drug Trial by UoA.
+
+    The table counts positive LLM topic flags, keeps only Panel D UoAs where at
+    least one of the two domains is present, writes a manuscript-ready LaTeX
+    table, and returns the UoA-level rows without the total.
+    """
+    required = ["Unit of assessment number", "Unit of assessment name", "llm_patent", "llm_drug_trial"]
+    missing = [col for col in required if col not in df_ics.columns]
+    if missing:
+        raise ValueError(f"Missing columns required for panel_d_unusual_domains table: {missing}")
+
+    df = _ensure_panel(df_ics).copy()
+    df = df[df["Panel"].astype(str).str.strip().str.upper().eq("D")].copy()
+    df["uoa_num"] = pd.to_numeric(df["Unit of assessment number"], errors="coerce")
+    df = df[df["uoa_num"].notna()].copy()
+    for col in ("llm_patent", "llm_drug_trial"):
+        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+    df["_patent_positive"] = (df["llm_patent"] > 0).astype(int)
+    df["_drug_trial_positive"] = (df["llm_drug_trial"] > 0).astype(int)
+
+    table = (
+        df.groupby(["uoa_num", "Unit of assessment name"], as_index=False, dropna=False)
+        .agg(
+            Patent=("_patent_positive", "sum"),
+            **{"Drug Trial": ("_drug_trial_positive", "sum")},
+        )
+    )
+    table = table[(table["Patent"] > 0) | (table["Drug Trial"] > 0)].copy()
+    table["uoa_num"] = table["uoa_num"].astype(int)
+    table["domain_total"] = table["Patent"] + table["Drug Trial"]
+    table = table.sort_values(["domain_total", "uoa_num"], ascending=[False, True]).reset_index(drop=True)
+
+    def _uoa_label(row: pd.Series) -> str:
+        uoa_num = int(row["uoa_num"])
+        label = PANEL_D_UOA_LABEL_OVERRIDES.get(uoa_num)
+        if label is None:
+            label = row["Unit of assessment name"] if pd.notna(row["Unit of assessment name"]) else UOA_MAP.get(uoa_num, "Unknown")
+        return f"{uoa_num} {label}"
+
+    display = pd.DataFrame(
+        {
+            "UoA": table.apply(_uoa_label, axis=1),
+            "Patent": table["Patent"].astype(int),
+            "Drug Trial": table["Drug Trial"].astype(int),
+        }
+    )
+    total_row = pd.DataFrame(
+        [
+            {
+                "UoA": "Total",
+                "Patent": int(display["Patent"].sum()),
+                "Drug Trial": int(display["Drug Trial"].sum()),
+            }
+        ]
+    )
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    lines = [
+        r"\begin{table}[!ht]\centering",
+        r"\caption{Distribution of Panel~D case studies classified as \textit{Patent} and \textit{Drug Trial} by Unit of Assessment (LLM classification).}",
+        r"\label{tab:panelD_unusual_domains}",
+        r"\small",
+        r"\begin{tabular}{lcc}",
+        r"\toprule",
+        r"UoA & Patent & Drug Trial \\",
+        r"\midrule",
+    ]
+    for _, row in display.iterrows():
+        lines.append(f"{_latex_escape_text(row['UoA'])} & {int(row['Patent'])} & {int(row['Drug Trial'])} \\\\")
+    lines.extend(
+        [
+            r"\midrule",
+            f"Total & {int(total_row.loc[0, 'Patent'])} & {int(total_row.loc[0, 'Drug Trial'])} \\\\",
+            r"\bottomrule",
+            r"\end{tabular}",
+            r"\end{table}",
+            "",
+        ]
+    )
+    (out_dir / "panel_d_unusual_domains.tex").write_text("\n".join(lines), encoding="utf-8")
+
+    return table.drop(columns=["domain_total"])
 
 
 def _llm_table(df_ics: pd.DataFrame) -> pd.DataFrame:
@@ -540,6 +651,8 @@ def build_and_save_summary_tables(
     llm_panel_df = _llm_panel_table(df_ics)
     _table_to_latex(llm_panel_df, out_dir / "llm_panel_summary.tex", column_format="llrrr")
 
+    panel_d_unusual_domains_df = _panel_d_unusual_domains_table(df_ics, out_dir=out_dir)
+
     physics_vs_chemistry_df = _physics_vs_chemistry_table(
         df_ics=df_ics,
         model_path=out_dir.parent / "models" / "regression_results.pkl",
@@ -551,6 +664,7 @@ def build_and_save_summary_tables(
         "uoa": uoa_df,
         "llm": llm_df,
         "llm_panel": llm_panel_df,
+        "panel_d_unusual_domains": panel_d_unusual_domains_df,
         "physics_vs_chemistry": physics_vs_chemistry_df,
     }
 

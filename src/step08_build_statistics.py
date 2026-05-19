@@ -62,6 +62,7 @@ def main(argv: list[str] | None = None) -> int:
             "output_rows": int(len(df_output)),
             "table_panel_rows": int(len(tables["panel"])),
             "table_uoa_rows": int(len(tables["uoa"])),
+            "table_panel_d_unusual_domains_rows": int(len(tables["panel_d_unusual_domains"])),
             "table_physics_vs_chemistry_rows": int(len(tables["physics_vs_chemistry"])),
         }
         print(f"Saved statistics report to: {report_path}")
