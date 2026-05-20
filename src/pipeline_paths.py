@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Any, Iterable, Sequence
 
 
 @dataclass(frozen=True)
@@ -23,13 +24,42 @@ class PipelinePaths:
     manifest_csv: Path
 
 
+def default_project_root() -> Path:
+    return Path(__file__).resolve().parents[1]
+
+
+def format_relative_path(path: Path | str, project_root: Path | str | None = None) -> str:
+    path = Path(path)
+    if not path.is_absolute():
+        return str(path)
+    root = Path(project_root).resolve() if project_root else default_project_root()
+    try:
+        return os.path.relpath(path, root)
+    except ValueError:
+        return str(path)
+
+
+def normalize_path_values(value: Any, project_root: Path | str | None = None, *, key: str | None = None) -> Any:
+    if isinstance(value, Path):
+        return format_relative_path(value, project_root)
+    if isinstance(value, dict):
+        return {str(k): normalize_path_values(v, project_root, key=str(k)) for k, v in value.items()}
+    if isinstance(value, list):
+        return [normalize_path_values(item, project_root, key=key) for item in value]
+    if isinstance(value, tuple):
+        return [normalize_path_values(item, project_root, key=key) for item in value]
+    if isinstance(value, str) and key and key.endswith("_path") and Path(value).is_absolute():
+        return format_relative_path(value, project_root)
+    return value
+
+
 def build_paths(
     project_root: Path | None = None,
     data_dir: str = "data",
     outputs_dir: str = "outputs",
     keys_dir: str = "keys",
 ) -> PipelinePaths:
-    root = Path(project_root).resolve() if project_root else Path(__file__).resolve().parents[1]
+    root = Path(project_root).resolve() if project_root else default_project_root()
     data = (root / data_dir).resolve()
     outputs = (root / outputs_dir).resolve()
     keys = (root / keys_dir).resolve()

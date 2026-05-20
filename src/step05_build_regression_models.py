@@ -26,14 +26,14 @@ try:  # pragma: no cover
     from .pipeline_config import load_config_and_paths
     from .pipeline_io import read_table
     from .pipeline_manifest import append_manifest_row
-    from .pipeline_paths import ensure_core_dirs, resolve_enhanced_ref_data_path
+    from .pipeline_paths import default_project_root, ensure_core_dirs, format_relative_path, resolve_enhanced_ref_data_path
 except ImportError:  # pragma: no cover
     from figure_one_helpers import DEFAULT_DATA_ROOT
     from figure_two_regression import build_coef_df, build_regression_latex
     from pipeline_config import load_config_and_paths
     from pipeline_io import read_table
     from pipeline_manifest import append_manifest_row
-    from pipeline_paths import ensure_core_dirs, resolve_enhanced_ref_data_path
+    from pipeline_paths import default_project_root, ensure_core_dirs, format_relative_path, resolve_enhanced_ref_data_path
 
 
 def _load_data(data_csv_path: Path) -> pd.DataFrame:
@@ -152,7 +152,7 @@ def build_and_save_models(
     with out_path.open("wb") as f:
         pickle.dump(payload, f)
 
-    print(f"Saved regression results to {out_path}")
+    print(f"Saved regression results to {format_relative_path(out_path)}")
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -166,7 +166,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
-    project_root = Path(args.project_root).resolve() if args.project_root else Path(__file__).resolve().parents[1]
+    project_root = Path(args.project_root).resolve() if args.project_root else default_project_root()
     _config, paths = load_config_and_paths(config_path=Path(args.config) if args.config else None, project_root=project_root)
     ensure_core_dirs(paths)
 
@@ -193,12 +193,13 @@ def main(argv: list[str] | None = None) -> int:
         finished_at = datetime.now(timezone.utc)
         append_manifest_row(
             manifest_path=paths.manifest_csv,
+            project_root=paths.project_root,
             step="step05_build_regression_models",
             status=status,
             started_at_utc=started_at.isoformat(),
             finished_at_utc=finished_at.isoformat(),
             duration_seconds=(finished_at - started_at).total_seconds(),
-            parameters={"data_csv": str(data_csv_path), "out_path": str(out_path)},
+            parameters={"data_csv": data_csv_path, "out_path": out_path},
             input_paths={"enhanced_ref_data": data_csv_path},
             output_paths={"regression_results": out_path},
             row_counts={},

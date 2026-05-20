@@ -7,7 +7,7 @@ from pathlib import Path
 try:  # pragma: no cover
     from .pipeline_config import load_config_and_paths
     from .pipeline_manifest import append_manifest_row
-    from .pipeline_paths import ensure_core_dirs
+    from .pipeline_paths import default_project_root, ensure_core_dirs, format_relative_path
     from .statistics_helpers import (
         build_and_save_summary_tables,
         build_descriptive_summary,
@@ -17,7 +17,7 @@ try:  # pragma: no cover
 except ImportError:  # pragma: no cover
     from pipeline_config import load_config_and_paths
     from pipeline_manifest import append_manifest_row
-    from pipeline_paths import ensure_core_dirs
+    from pipeline_paths import default_project_root, ensure_core_dirs, format_relative_path
     from statistics_helpers import (
         build_and_save_summary_tables,
         build_descriptive_summary,
@@ -36,7 +36,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
-    project_root = Path(args.project_root).resolve() if args.project_root else Path(__file__).resolve().parents[1]
+    project_root = Path(args.project_root).resolve() if args.project_root else default_project_root()
     _config, paths = load_config_and_paths(config_path=Path(args.config) if args.config else None, project_root=project_root)
     ensure_core_dirs(paths)
 
@@ -65,7 +65,7 @@ def main(argv: list[str] | None = None) -> int:
             "table_panel_d_unusual_domains_rows": int(len(tables["panel_d_unusual_domains"])),
             "table_physics_vs_chemistry_rows": int(len(tables["physics_vs_chemistry"])),
         }
-        print(f"Saved statistics report to: {report_path}")
+        print(f"Saved statistics report to: {format_relative_path(report_path, paths.project_root)}")
     except Exception as exc:  # noqa: BLE001
         status = "failed"
         notes = str(exc)
@@ -74,12 +74,13 @@ def main(argv: list[str] | None = None) -> int:
         finished_at = datetime.now(timezone.utc)
         append_manifest_row(
             manifest_path=paths.manifest_csv,
+            project_root=paths.project_root,
             step="step08_build_statistics",
             status=status,
             started_at_utc=started_at.isoformat(),
             finished_at_utc=finished_at.isoformat(),
             duration_seconds=(finished_at - started_at).total_seconds(),
-            parameters={"report_out": str(report_path)},
+            parameters={"report_out": report_path},
             input_paths={},
             output_paths={"statistics_report": report_path},
             row_counts=row_counts,

@@ -22,7 +22,7 @@ try:  # pragma: no cover
     from .pipeline_config import load_config_and_paths
     from .pipeline_io import read_table
     from .pipeline_manifest import append_manifest_row
-    from .pipeline_paths import ensure_core_dirs
+    from .pipeline_paths import default_project_root, ensure_core_dirs, format_relative_path
 except ImportError:  # pragma: no cover
     from figure_one_helpers import resolve_enhanced_ref_data_path
     from figure_two_llm import (
@@ -37,7 +37,7 @@ except ImportError:  # pragma: no cover
     from pipeline_config import load_config_and_paths
     from pipeline_io import read_table
     from pipeline_manifest import append_manifest_row
-    from pipeline_paths import ensure_core_dirs
+    from pipeline_paths import default_project_root, ensure_core_dirs, format_relative_path
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -155,8 +155,8 @@ def _validate_primary_thematic_indicators(paths, *, model: str, prompt_version: 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     print("[step06] Starting Figure 2 build...")
-    project_root = Path(args.project_root).resolve() if args.project_root else Path(__file__).resolve().parents[1]
-    print(f"[step06] Project root: {project_root}")
+    project_root = Path(args.project_root).resolve() if args.project_root else default_project_root()
+    print(f"[step06] Project root: {format_relative_path(project_root, project_root)}")
     config, paths = load_config_and_paths(config_path=Path(args.config) if args.config else None, project_root=project_root)
     ensure_core_dirs(paths)
 
@@ -237,6 +237,7 @@ def main(argv: list[str] | None = None) -> int:
         print("[step06] Recording manifest row...")
         append_manifest_row(
             manifest_path=paths.manifest_csv,
+            project_root=paths.project_root,
             step="step06_make_figure_two",
             status=status,
             started_at_utc=started_at.isoformat(),
@@ -248,7 +249,7 @@ def main(argv: list[str] | None = None) -> int:
             row_counts=row_counts,
             notes=notes,
         )
-    print(f"[step06] Saved Figure 2 to {fig_dir}")
+    print(f"[step06] Saved Figure 2 to {format_relative_path(fig_dir, paths.project_root)}")
     return 0
 
 

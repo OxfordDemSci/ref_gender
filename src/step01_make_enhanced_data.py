@@ -25,7 +25,7 @@ try:  # pragma: no cover
     from .pipeline_drift import apply_enhanced_drift_checks
     from .pipeline_io import atomic_write_csv, atomic_write_parquet, build_retry_session, download_file, read_secret
     from .pipeline_manifest import append_manifest_row
-    from .pipeline_paths import PipelinePaths, ensure_core_dirs
+    from .pipeline_paths import PipelinePaths, default_project_root, ensure_core_dirs, format_relative_path
     from .pipeline_schema import validate_enhanced_ref_data
     from .openai_batch import OpenAIBatchPending, create_or_retrieve_batch, read_jsonl
 except ImportError:  # pragma: no cover
@@ -33,7 +33,7 @@ except ImportError:  # pragma: no cover
     from pipeline_drift import apply_enhanced_drift_checks
     from pipeline_io import atomic_write_csv, atomic_write_parquet, build_retry_session, download_file, read_secret
     from pipeline_manifest import append_manifest_row
-    from pipeline_paths import PipelinePaths, ensure_core_dirs
+    from pipeline_paths import PipelinePaths, default_project_root, ensure_core_dirs, format_relative_path
     from pipeline_schema import validate_enhanced_ref_data
     from openai_batch import OpenAIBatchPending, create_or_retrieve_batch, read_jsonl
 
@@ -642,7 +642,7 @@ def get_ics_staff_rows(df: pd.DataFrame, ics_staff_rows_path: Path) -> pd.DataFr
 def get_ics_grants(df: pd.DataFrame, ics_grants_path: Path) -> pd.DataFrame:
     grants_path = Path(ics_grants_path) / "ICS_grants_aggregated.csv"
     if not grants_path.exists():
-        print(f"No ICS grants data at {grants_path}; continuing without grants enrichment.")
+        print(f"No ICS grants data at {format_relative_path(grants_path)}; continuing without grants enrichment.")
         return df
     grants_rows = pd.read_csv(grants_path)
     print(f"ICS grants rows loaded: {len(grants_rows)}")
@@ -652,7 +652,7 @@ def get_ics_grants(df: pd.DataFrame, ics_grants_path: Path) -> pd.DataFrame:
 def get_university_class(df: pd.DataFrame, manual_path: Path) -> pd.DataFrame:
     class_path = Path(manual_path) / "university_category" / "ref_unique_institutions.csv"
     if not class_path.exists():
-        print(f"No university classifications file at {class_path}; continuing without this lookup.")
+        print(f"No university classifications file at {format_relative_path(class_path)}; continuing without this lookup.")
         return df
     university_class = pd.read_csv(class_path)
     print("Merged in university classifications data.")
@@ -1221,6 +1221,7 @@ def get_thematic_indicators(
 
         state, manifest = create_or_retrieve_batch(
             client,
+            project_root=default_project_root(),
             manifest_path=manifest_path,
             jsonl_path=jsonl_path,
             output_path=output_path,
@@ -1240,7 +1241,7 @@ def get_thematic_indicators(
             raise OpenAIBatchPending(
                 "OpenAI thematic batch is pending. "
                 f"batch_id={manifest.get('batch_id')} status={manifest.get('status')} "
-                f"manifest={manifest_path}. Re-run the same pipeline command later to collect it."
+                f"manifest={format_relative_path(manifest_path)}. Re-run the same pipeline command later to collect it."
             )
 
         output_lines = read_jsonl(output_path)
@@ -1596,7 +1597,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
 
-    project_root = Path(args.project_root).resolve() if args.project_root else Path(__file__).resolve().parents[1]
+    project_root = Path(args.project_root).resolve() if args.project_root else default_project_root()
     config, paths = load_config_and_paths(config_path=Path(args.config) if args.config else None, project_root=project_root)
     ensure_core_dirs(paths)
 
@@ -1625,7 +1626,7 @@ def main(argv: list[str] | None = None) -> int:
     backfill_mode = bool(args.backfill_model)
     prepare_source_only = bool(args.prepare_source_only)
     if output_path.exists() and not args.force and not backfill_mode and not prepare_source_only:
-        print(f"Output already exists: {output_path}. Use --force to overwrite.")
+        print(f"Output already exists: {format_relative_path(output_path, project_root)}. Use --force to overwrite.")
         return 0
 
     started_at = datetime.now(timezone.utc)
@@ -1637,7 +1638,7 @@ def main(argv: list[str] | None = None) -> int:
         "llm_mode": "with_llm" if args.with_llm else ("without_llm" if args.without_llm else "config_default"),
         "skip_downloads": args.skip_downloads,
         "prepare_source_only": args.prepare_source_only,
-        "output": str(output_path),
+        "output": output_path,
         "backfill_model": args.backfill_model,
         "backfill_prompt_version": args.backfill_prompt_version,
     }
@@ -1687,7 +1688,7 @@ def main(argv: list[str] | None = None) -> int:
                 df_backfill = pd.read_parquet(src_path)
             else:
                 df_backfill = pd.read_csv(src_path)
-            print(f"Loaded {len(df_backfill)} rows from {src_path}")
+            print(f"Loaded {len(df_backfill)} rows from {format_relative_path(src_path, paths.project_root)}")
 
             backfill_model = str(args.backfill_model)
             backfill_prompt_version = str(
@@ -1737,7 +1738,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             print(
                 "Backfill complete. Updated cache at "
-                f"{paths.data_dir / 'openai' / 'categories.csv'} "
+                f"{format_relative_path(paths.data_dir / 'openai' / 'categories.csv', paths.project_root)} "
                 f"for model={backfill_model}, prompt_version={backfill_prompt_version}."
             )
             return 0
@@ -1774,7 +1775,7 @@ def main(argv: list[str] | None = None) -> int:
                 )
             row_counts = {"prepared_source_files": len(raw_files)}
             params["mode"] = "prepare_source_only"
-            print(f"Prepared REF source workbooks in: {raw_path}")
+            print(f"Prepared REF source workbooks in: {format_relative_path(raw_path, paths.project_root)}")
             return 0
 
         clean_dep_level(raw_path, edit_path)
@@ -1825,10 +1826,10 @@ def main(argv: list[str] | None = None) -> int:
         elif output_path != analysis_parquet_path:
             # default to CSV for unknown extension requests
             atomic_write_csv(df, output_path)
-        print(f"Saved enhanced dataset to: {output_path}")
-        print(f"Saved cleaned final CSV to: {final_exports['cleaned_csv_path']}")
-        print(f"Saved Stata DTA to: {final_exports['cleaned_dta_path']}")
-        print(f"Saved Stata column map to: {final_exports['column_map_path']}")
+        print(f"Saved enhanced dataset to: {format_relative_path(output_path, paths.project_root)}")
+        print(f"Saved cleaned final CSV to: {format_relative_path(final_exports['cleaned_csv_path'], paths.project_root)}")
+        print(f"Saved Stata DTA to: {format_relative_path(final_exports['cleaned_dta_path'], paths.project_root)}")
+        print(f"Saved Stata column map to: {format_relative_path(final_exports['column_map_path'], paths.project_root)}")
     except OpenAIBatchPending as exc:
         manifest_status = "pending"
         manifest_notes = str(exc)
@@ -1842,6 +1843,7 @@ def main(argv: list[str] | None = None) -> int:
         finished_at = datetime.now(timezone.utc)
         append_manifest_row(
             paths.manifest_csv,
+            project_root=paths.project_root,
             step="step01_make_enhanced_data",
             status=manifest_status,
             started_at_utc=started_at.isoformat(),

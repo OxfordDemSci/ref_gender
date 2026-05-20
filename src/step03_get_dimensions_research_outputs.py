@@ -19,14 +19,14 @@ try:  # pragma: no cover
     from .pipeline_drift import apply_outputs_drift_checks
     from .pipeline_io import atomic_write_csv, atomic_write_parquet, read_secret, read_table
     from .pipeline_manifest import append_manifest_row
-    from .pipeline_paths import ensure_core_dirs
+    from .pipeline_paths import default_project_root, ensure_core_dirs, format_relative_path
     from .pipeline_schema import validate_outputs_concat
 except ImportError:  # pragma: no cover
     from pipeline_config import load_config_and_paths
     from pipeline_drift import apply_outputs_drift_checks
     from pipeline_io import atomic_write_csv, atomic_write_parquet, read_secret, read_table
     from pipeline_manifest import append_manifest_row
-    from pipeline_paths import ensure_core_dirs
+    from pipeline_paths import default_project_root, ensure_core_dirs, format_relative_path
     from pipeline_schema import validate_outputs_concat
 
 
@@ -414,7 +414,7 @@ def _assemble_outputs_with_authors(raw_outputs_path: Path, dim_df: pd.DataFrame)
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
-    project_root = Path(args.project_root).resolve() if args.project_root else Path(__file__).resolve().parents[1]
+    project_root = Path(args.project_root).resolve() if args.project_root else default_project_root()
     config, paths = load_config_and_paths(config_path=Path(args.config) if args.config else None, project_root=project_root)
     ensure_core_dirs(paths)
 
@@ -560,7 +560,7 @@ def main(argv: list[str] | None = None) -> int:
             "outputs_any_rows": int(len(any_authors)),
             "outputs_positive_rows": int(len(positive_authors)),
         }
-        print(f"Saved outputs with positive authors to: {analysis_pos_parquet}")
+        print(f"Saved outputs with positive authors to: {format_relative_path(analysis_pos_parquet, paths.project_root)}")
     except Exception as exc:  # noqa: BLE001
         status = "failed"
         notes = str(exc)
@@ -569,6 +569,7 @@ def main(argv: list[str] | None = None) -> int:
         finished_at = datetime.now(timezone.utc)
         append_manifest_row(
             manifest_path=paths.manifest_csv,
+            project_root=paths.project_root,
             step="step03_get_dimensions_research_outputs",
             status=status,
             started_at_utc=started_at.isoformat(),

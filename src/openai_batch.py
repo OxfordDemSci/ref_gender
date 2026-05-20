@@ -6,6 +6,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+try:  # pragma: no cover
+    from .pipeline_paths import normalize_path_values
+except ImportError:  # pragma: no cover
+    from pipeline_paths import normalize_path_values
+
 PENDING_BATCH_STATUSES = {"validating", "in_progress", "finalizing", "cancelling"}
 FAILED_BATCH_STATUSES = {"failed", "expired", "cancelled"}
 
@@ -96,6 +101,7 @@ def _file_content_text(content: Any) -> str:
 def create_or_retrieve_batch(
     client: Any,
     *,
+    project_root: Path | None = None,
     manifest_path: Path,
     jsonl_path: Path,
     output_path: Path,
@@ -120,7 +126,8 @@ def create_or_retrieve_batch(
 
     if output_path.exists():
         manifest["status"] = "completed"
-        manifest["output_path"] = str(output_path)
+        manifest["output_path"] = output_path
+        manifest = normalize_path_values(manifest, project_root)
         atomic_write_json(manifest_path, manifest)
         return "completed", manifest
 
@@ -146,13 +153,14 @@ def create_or_retrieve_batch(
             "status": batch_dict.get("status", ""),
             "metadata": metadata,
             "request_count": len(requests),
-            "manifest_path": str(manifest_path),
-            "jsonl_path": str(jsonl_path),
-            "output_path": str(output_path),
-            "error_path": str(error_path),
+            "manifest_path": manifest_path,
+            "jsonl_path": jsonl_path,
+            "output_path": output_path,
+            "error_path": error_path,
             "submitted_at_utc": utc_now_iso(),
             "batch": batch_dict,
         }
+        manifest = normalize_path_values(manifest, project_root)
         atomic_write_json(manifest_path, manifest)
         if not wait:
             return "submitted", manifest
@@ -167,6 +175,7 @@ def create_or_retrieve_batch(
                 "last_checked_at_utc": utc_now_iso(),
             }
         )
+        manifest = normalize_path_values(manifest, project_root)
         atomic_write_json(manifest_path, manifest)
 
         if status == "completed":
@@ -181,8 +190,9 @@ def create_or_retrieve_batch(
                 error_text = _file_content_text(client.files.content(str(error_file_id)))
                 error_path.write_text(error_text, encoding="utf-8")
             manifest["output_file_id"] = output_file_id
-            manifest["output_path"] = str(output_path)
-            manifest["error_path"] = str(error_path) if error_path.exists() else ""
+            manifest["output_path"] = output_path
+            manifest["error_path"] = error_path if error_path.exists() else ""
+            manifest = normalize_path_values(manifest, project_root)
             atomic_write_json(manifest_path, manifest)
             return "completed", manifest
         if status in FAILED_BATCH_STATUSES:
@@ -191,4 +201,3 @@ def create_or_retrieve_batch(
             return "pending", manifest
 
         time.sleep(max(5.0, float(poll_interval_seconds)))
-

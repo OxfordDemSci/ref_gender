@@ -7,6 +7,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+try:  # pragma: no cover
+    from .pipeline_paths import normalize_path_values
+except ImportError:  # pragma: no cover
+    from pipeline_paths import normalize_path_values
+
 
 def now_utc_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -15,6 +20,7 @@ def now_utc_iso() -> str:
 def append_manifest_row(
     manifest_path: Path,
     *,
+    project_root: Path | None = None,
     step: str,
     status: str,
     started_at_utc: str,
@@ -48,9 +54,7 @@ def append_manifest_row(
     ]
 
     def _jsonable(value: Any) -> str:
-        if isinstance(value, dict):
-            value = {str(k): str(v) for k, v in value.items()}
-        return json.dumps(value if value is not None else {}, sort_keys=True)
+        return json.dumps(normalize_path_values(value if value is not None else {}, project_root), sort_keys=True)
 
     write_header = not manifest_path.exists()
     with manifest_path.open("a", encoding="utf-8", newline="") as fh:

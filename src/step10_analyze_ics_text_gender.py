@@ -35,13 +35,13 @@ try:  # pragma: no cover
     from .pipeline_config import load_config_and_paths
     from .pipeline_io import atomic_write_csv, read_table
     from .pipeline_manifest import append_manifest_row
-    from .pipeline_paths import ensure_core_dirs
+    from .pipeline_paths import default_project_root, ensure_core_dirs, format_relative_path
 except ImportError:  # pragma: no cover
     from figure_one_helpers import PANEL_COLORS, apply_mpl_defaults, resolve_enhanced_ref_data_path
     from pipeline_config import load_config_and_paths
     from pipeline_io import atomic_write_csv, read_table
     from pipeline_manifest import append_manifest_row
-    from pipeline_paths import ensure_core_dirs
+    from pipeline_paths import default_project_root, ensure_core_dirs, format_relative_path
 
 
 DEFAULT_TEXT_COLUMNS = ("1. Summary of the impact", "4. Details of the impact")
@@ -737,8 +737,8 @@ def save_figure_triplet(fig: plt.Figure, stem: Path) -> dict[str, Path]:
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     print("[step10] Starting ICS text-word gender association analysis...")
-    project_root = Path(args.project_root).resolve() if args.project_root else Path(__file__).resolve().parents[1]
-    print(f"[step10] Project root: {project_root}")
+    project_root = Path(args.project_root).resolve() if args.project_root else default_project_root()
+    print(f"[step10] Project root: {format_relative_path(project_root, project_root)}")
     _config, paths = load_config_and_paths(
         config_path=Path(args.config) if args.config else None,
         project_root=project_root,
@@ -772,7 +772,7 @@ def main(argv: list[str] | None = None) -> int:
 
     input_path = Path(args.input) if args.input else resolve_enhanced_ref_data_path(paths.data_dir)
     input_path = input_path.resolve()
-    print(f"[step10] Input data: {input_path}")
+    print(f"[step10] Input data: {format_relative_path(input_path, paths.project_root)}")
 
     try:
         df = read_table(input_path)
@@ -862,13 +862,14 @@ def main(argv: list[str] | None = None) -> int:
         finished_at = datetime.now(timezone.utc)
         append_manifest_row(
             manifest_path=paths.manifest_csv,
+            project_root=paths.project_root,
             step="step10_analyze_ics_text_gender",
             status=status,
             started_at_utc=started_at.isoformat(),
             finished_at_utc=finished_at.isoformat(),
             duration_seconds=(finished_at - started_at).total_seconds(),
             parameters={
-                "input": str(input_path),
+                "input": input_path,
                 "text_columns": list(args.text_columns),
                 "outcome_col": str(args.outcome_col),
                 "min_token_len": int(args.min_token_len),
@@ -877,7 +878,7 @@ def main(argv: list[str] | None = None) -> int:
                 "max_vocab": int(args.max_vocab),
                 "top_n": int(args.top_n),
                 "keep_default_stopwords": bool(args.keep_default_stopwords),
-                "stopwords_file": str(args.stopwords_file) if args.stopwords_file else None,
+                "stopwords_file": Path(args.stopwords_file) if args.stopwords_file else None,
                 "basename": basename,
             },
             input_paths={"enhanced_ref_data": input_path},

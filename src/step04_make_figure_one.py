@@ -9,13 +9,13 @@ try:  # pragma: no cover
     from .figure_one_plots import plot_figure_one, save_figure
     from .pipeline_config import load_config_and_paths
     from .pipeline_manifest import append_manifest_row
-    from .pipeline_paths import ensure_core_dirs
+    from .pipeline_paths import default_project_root, ensure_core_dirs, format_relative_path
 except ImportError:  # pragma: no cover
     from figure_one_data import prepare_figure_one_data, save_wrangled
     from figure_one_plots import plot_figure_one, save_figure
     from pipeline_config import load_config_and_paths
     from pipeline_manifest import append_manifest_row
-    from pipeline_paths import ensure_core_dirs
+    from pipeline_paths import default_project_root, ensure_core_dirs, format_relative_path
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -29,8 +29,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     print("[step04] Starting Figure 1 build...")
-    project_root = Path(args.project_root).resolve() if args.project_root else Path(__file__).resolve().parents[1]
-    print(f"[step04] Project root: {project_root}")
+    project_root = Path(args.project_root).resolve() if args.project_root else default_project_root()
+    print(f"[step04] Project root: {format_relative_path(project_root, project_root)}")
     _config, paths = load_config_and_paths(config_path=Path(args.config) if args.config else None, project_root=project_root)
     ensure_core_dirs(paths)
 
@@ -84,6 +84,7 @@ def main(argv: list[str] | None = None) -> int:
         print("[step04] Recording manifest row...")
         append_manifest_row(
             manifest_path=paths.manifest_csv,
+            project_root=paths.project_root,
             step="step04_make_figure_one",
             status=status,
             started_at_utc=started_at.isoformat(),
@@ -95,7 +96,7 @@ def main(argv: list[str] | None = None) -> int:
             row_counts=row_counts,
             notes=notes,
         )
-    print(f"[step04] Saved Figure 1 to {fig_dir}")
+    print(f"[step04] Saved Figure 1 to {format_relative_path(fig_dir, paths.project_root)}")
     return 0
 
 

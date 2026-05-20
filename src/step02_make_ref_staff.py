@@ -35,13 +35,13 @@ try:  # pragma: no cover
     from .pipeline_config import load_config_and_paths
     from .pipeline_io import atomic_write_csv, build_retry_session, read_secret
     from .pipeline_manifest import append_manifest_row
-    from .pipeline_paths import ensure_core_dirs
+    from .pipeline_paths import default_project_root, ensure_core_dirs, format_relative_path
 except ImportError:  # pragma: no cover
     from openai_batch import OpenAIBatchPending, create_or_retrieve_batch, read_jsonl
     from pipeline_config import load_config_and_paths
     from pipeline_io import atomic_write_csv, build_retry_session, read_secret
     from pipeline_manifest import append_manifest_row
-    from pipeline_paths import ensure_core_dirs
+    from pipeline_paths import default_project_root, ensure_core_dirs, format_relative_path
 
 # =========================
 # 0) OPENAI INITIALISATION
@@ -774,6 +774,7 @@ def _run_staff_openai_batch(
 
     state, manifest = create_or_retrieve_batch(
         client,
+        project_root=default_project_root(),
         manifest_path=manifest_path,
         jsonl_path=jsonl_path,
         output_path=output_path,
@@ -792,7 +793,7 @@ def _run_staff_openai_batch(
         raise OpenAIBatchPending(
             "OpenAI staff extraction batch is pending. "
             f"batch_id={manifest.get('batch_id')} status={manifest.get('status')} "
-            f"manifest={manifest_path}. Re-run the same pipeline command later to collect it."
+            f"manifest={format_relative_path(manifest_path)}. Re-run the same pipeline command later to collect it."
         )
 
     output_lines = read_jsonl(output_path)
@@ -1374,7 +1375,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
-    project_root = Path(args.project_root).resolve() if args.project_root else Path(__file__).resolve().parents[1]
+    project_root = Path(args.project_root).resolve() if args.project_root else default_project_root()
     config, paths = load_config_and_paths(config_path=Path(args.config) if args.config else None, project_root=project_root)
     ensure_core_dirs(paths)
 
@@ -1502,6 +1503,7 @@ def main(argv: list[str] | None = None) -> int:
         finished_at = datetime.now(timezone.utc)
         append_manifest_row(
             manifest_path=paths.manifest_csv,
+            project_root=paths.project_root,
             step="step02_make_ref_staff",
             status=status,
             started_at_utc=started_at.isoformat(),
@@ -1514,9 +1516,9 @@ def main(argv: list[str] | None = None) -> int:
                 "llm_batch_size": llm_batch_size if 'llm_batch_size' in locals() else None,
                 "llm_max_retries": llm_max_retries if 'llm_max_retries' in locals() else None,
                 "llm_retry_base_sleep": llm_retry_base_sleep if 'llm_retry_base_sleep' in locals() else None,
-                "input_path": str(input_path),
+                "input_path": input_path,
                 "pdf_cache_enabled": cache_enabled if 'cache_enabled' in locals() else None,
-                "pdf_cache_dir": str(pdf_cache_dir) if 'pdf_cache_dir' in locals() and pdf_cache_dir is not None else None,
+                "pdf_cache_dir": pdf_cache_dir if 'pdf_cache_dir' in locals() and pdf_cache_dir is not None else None,
                 "staff_local_first": bool(step02_cfg.get("staff_local_first", True)) if 'step02_cfg' in locals() else None,
                 "openai_processing_mode": openai_processing_mode if 'openai_processing_mode' in locals() else None,
                 "batch_wait": batch_wait if 'batch_wait' in locals() else None,
