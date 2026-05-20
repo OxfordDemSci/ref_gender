@@ -68,8 +68,8 @@ IMPACT_DOMAIN_VARS = (
 FIGURE_TWO_SIZE = (14, 10.08)
 FIGURE_TWO_FONT_BUMP_POINTS = 3.0
 FIGURE_TWO_BRACE_LABEL_X = -0.145
-SUPP_GLM_FIGURE_SIZE = (14.03, 7.245)
-SUPP_GLM_FONT_BUMP_POINTS = 1.0
+SUPP_GLM_FIGURE_SIZE = (14.03, 8.694)
+SUPP_GLM_FONT_BUMP_POINTS = 4.0
 
 
 def _bump_all_text_sizes(fig: plt.Figure, points: float) -> None:
@@ -1039,7 +1039,7 @@ def plot_supplementary_figure_two(
     mpl.rcParams["axes.titleweight"] = "bold"
     plt.rcParams["axes.unicode_minus"] = False
 
-    # Single-panel GLM figure, scaled 15% above the previous 12.2 x 6.3 inch canvas.
+    # Single-panel GLM figure, scaled 20% taller than the previous 14.03 x 7.245 inch canvas.
     fig, ax = plt.subplots(1, 1, figsize=SUPP_GLM_FIGURE_SIZE)
     ordered_var_order = _ordered_variables_for_coefficients(coef_df, var_order)
     _plot_glm_coefficients(
@@ -1078,7 +1078,7 @@ def plot_supplementary_figure_three(
     label_overrides: dict[str, str] | None = None,
 ) -> tuple[plt.Figure, tuple[plt.Axes, plt.Axes]]:
     """
-    Supplementary Figure 3:
+    Supplementary Figure 4:
     Two tall coefficient plots (OLS + GLM) where disciplines are UoA dummies
     with UoA 1 (Clinical Medicine) as reference.
     """
@@ -1100,7 +1100,7 @@ def plot_supplementary_figure_three(
     fig, (ax_ols, ax_glm) = plt.subplots(
         1,
         2,
-        figsize=(12.75, 15),
+        figsize=(12.75, 17.25),
         sharey=True,
         gridspec_kw={"width_ratios": [1, 1]},
     )
@@ -1112,7 +1112,7 @@ def plot_supplementary_figure_three(
         MODEL_COLORS,
         panel_title="a.",
         brace_side="left",
-        legend_loc="lower left",
+        legend_loc="lower right",
         legend_title="OLS Specification",
         legend_fontsize=11,
         label_overrides=label_overrides,
@@ -1126,7 +1126,7 @@ def plot_supplementary_figure_three(
         marker_alpha=1.0,
         whisker_alpha=1.0,
     )
-    ax_ols.set_xlabel("Associated Change in Women\nICS Authors", fontsize=15)
+    ax_ols.set_xlabel("Associated Change in Women\nICS Authors (OLS)", fontsize=15)
     ax_ols.tick_params(axis="y", which="both", labelleft=True, labelright=False, left=True, right=False, length=6, labelsize=9)
     sns.despine(ax=ax_ols, left=False, top=True, right=True, bottom=False)
 
@@ -1148,6 +1148,7 @@ def plot_supplementary_figure_three(
         impact_label_right="Impact\nDomains",
         right_brace_scale=0.9,
         brace_label_x_override=1.12,
+        brace_label_fontsize_override=14,
         marker_alpha=1.0,
         whisker_alpha=1.0,
         invert_y_axis=False,
@@ -1160,5 +1161,12 @@ def plot_supplementary_figure_three(
     ax_glm.tick_params(axis="y", which="both", labelleft=False, labelright=False, left=True, right=False, length=6, labelsize=9)
     sns.despine(ax=ax_glm, left=False, top=True, right=True, bottom=False)
 
+    _bump_all_text_sizes(fig, 3.0)
+    for ax in (ax_ols, ax_glm):
+        for title in (ax.title, ax._left_title, ax._right_title):
+            if title.get_text():
+                title.set_fontsize(title.get_fontsize() + 2.0)
+        for label in ax.get_yticklabels():
+            label.set_fontsize(label.get_fontsize() + 2.0)
     fig.tight_layout(rect=(0.04, 0, 0.96, 1), w_pad=3.5)
     return fig, (ax_ols, ax_glm)

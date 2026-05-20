@@ -599,7 +599,9 @@ def plot_word_association_figure(
         raise ValueError("Association table is empty; cannot plot.")
 
     _prep_pub_style()
-    fig, (ax_a, ax_b) = plt.subplots(1, 2, figsize=(16, 8))
+    fig, (ax_a, ax_b) = plt.subplots(2, 1, figsize=(7.48, 13.6))
+    ax_a.set_box_aspect(1)
+    ax_b.set_box_aspect(1)
 
     top_pos, top_neg = build_top_tables(assoc, top_n=top_n)
     panel_df = pd.concat([top_neg, top_pos], ignore_index=True)
@@ -636,9 +638,10 @@ def plot_word_association_figure(
 
     ax_a.set_yticks(y)
     ax_a.set_yticklabels(panel_df["token"].tolist())
-    ax_a.set_xlabel(f"Difference in {outcome_label}", fontsize=13)
-    ax_a.set_title("a.", loc="left", fontsize=17, fontweight="bold")
-    ax_a.tick_params(axis="both", labelsize=11)
+    ax_a.set_xlabel(f"Difference in {outcome_label}", fontsize=18)
+    ax_a.set_title("a.", loc="left", fontsize=22, fontweight="bold")
+    ax_a.tick_params(axis="both", labelsize=14)
+    ax_a.tick_params(axis="y", labelsize=11)
     ax_a.set_axisbelow(True)
     ax_a.xaxis.set_major_formatter(FuncFormatter(lambda x, pos: f"{x:.0f}%"))
 
@@ -654,7 +657,7 @@ def plot_word_association_figure(
             markeredgecolor="k",
             markeredgewidth=0.35,
             markersize=7,
-            label="Higher female share",
+            label="Higher women's share",
         ),
         Line2D(
             [0],
@@ -665,10 +668,10 @@ def plot_word_association_figure(
             markeredgecolor="k",
             markeredgewidth=0.35,
             markersize=7,
-            label="Lower female share",
+            label="Lower women's share",
         ),
     ]
-    ax_a.legend(handles=legend_handles, frameon=True, edgecolor="k", fontsize=10, loc="lower right")
+    ax_a.legend(handles=legend_handles, frameon=True, edgecolor="k", fontsize=14, loc="lower right")
 
     scatter_df = assoc.copy()
     q_for_color = scatter_df["q_value"].fillna(1.0).clip(lower=1e-12)
@@ -686,11 +689,11 @@ def plot_word_association_figure(
         zorder=2,
     )
     ax_b.axhline(0.0, color="k", linestyle="--", linewidth=1.2, zorder=1)
-    ax_b.set_xlabel("Word Prevalence Across ICS Texts", fontsize=13)
+    ax_b.set_xlabel("Word Prevalence Across ICS Texts", fontsize=18)
     ax_b.xaxis.set_major_formatter(FuncFormatter(lambda x, pos: f"{x:.0f}%"))
-    ax_b.set_ylabel(f"Difference in {outcome_label} (pp)", fontsize=13)
-    ax_b.set_title("b.", loc="left", fontsize=17, fontweight="bold")
-    ax_b.tick_params(axis="both", labelsize=11)
+    ax_b.set_ylabel(f"Difference in {outcome_label} (pp)", fontsize=18)
+    ax_b.set_title("b.", loc="left", fontsize=22, fontweight="bold")
+    ax_b.tick_params(axis="both", labelsize=14)
     ax_b.set_axisbelow(True)
 
     label_df = (
@@ -704,18 +707,18 @@ def plot_word_association_figure(
             xy=(row["prevalence_pct"], row["delta_pct_points"]),
             xytext=(4, 2),
             textcoords="offset points",
-            fontsize=9,
+            fontsize=12,
             color="0.15",
         )
 
     cbar = fig.colorbar(sc, ax=ax_b, fraction=0.065, pad=0.02)
-    cbar.set_label("-log10(FDR q-value)", fontsize=11)
-    cbar.ax.tick_params(labelsize=10)
+    cbar.set_label("-log10(FDR q-value)", fontsize=16)
+    cbar.ax.tick_params(labelsize=17)
 
     for ax in (ax_a, ax_b):
         ax.grid(True, which="major", axis="both", linestyle="--", linewidth=0.8, alpha=0.35)
 
-    fig.tight_layout()
+    fig.tight_layout(h_pad=3.0)
     return fig, (ax_a, ax_b)
 
 
@@ -830,7 +833,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[step10] Wrote tables to {tables_dir}")
 
         outcome_label = (
-            "Female Share"
+            "Women's Share"
             if str(args.outcome_col) == "pct_female"
             else str(args.outcome_col)
         )
