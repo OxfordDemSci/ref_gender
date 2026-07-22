@@ -12,6 +12,7 @@ try:  # pragma: no cover
         build_and_save_summary_tables,
         build_descriptive_summary,
         build_inference_summary,
+        load_department_scale_data,
         load_statistics_data,
     )
 except ImportError:  # pragma: no cover
@@ -22,6 +23,7 @@ except ImportError:  # pragma: no cover
         build_and_save_summary_tables,
         build_descriptive_summary,
         build_inference_summary,
+        load_department_scale_data,
         load_statistics_data,
     )
 
@@ -50,9 +52,10 @@ def main(argv: list[str] | None = None) -> int:
     row_counts = {}
     try:
         df_output, df_ics, df_uoa_m, df_uni_m, df_uniuoa_m = load_statistics_data(paths.data_dir)
+        scale_df = load_department_scale_data(paths.data_dir)
         descriptive = build_descriptive_summary(df_ics, df_uoa_m, df_uni_m, df_output)
         inference = build_inference_summary(df_ics, df_output, df_uoa_m, df_uni_m, df_uniuoa_m)
-        tables = build_and_save_summary_tables(df_ics, df_output, out_dir=table_out_dir)
+        tables = build_and_save_summary_tables(df_ics, df_output, out_dir=table_out_dir, scale_df=scale_df)
 
         report_text = descriptive + "\n\n" + inference + "\n"
         report_path.write_text(report_text, encoding="utf-8")
@@ -60,6 +63,7 @@ def main(argv: list[str] | None = None) -> int:
         row_counts = {
             "ics_rows": int(len(df_ics)),
             "output_rows": int(len(df_output)),
+            "scale_rows": int(len(scale_df)),
             "table_panel_rows": int(len(tables["panel"])),
             "table_uoa_rows": int(len(tables["uoa"])),
             "table_panel_d_unusual_domains_rows": int(len(tables["panel_d_unusual_domains"])),

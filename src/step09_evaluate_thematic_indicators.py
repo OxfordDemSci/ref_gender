@@ -14,10 +14,12 @@ from matplotlib.ticker import PercentFormatter
 
 try:  # pragma: no cover
     from .figure_one_helpers import PANEL_COLORS, apply_mpl_defaults, resolve_enhanced_ref_data_path
+    from .figure_two_llm import MEAN_LINE_STYLE, MEAN_LINE_WIDTH, NON_VIOLIN_ALPHA
     from .pipeline_config import load_config_and_paths
     from .pipeline_io import atomic_write_csv, read_table
 except ImportError:  # pragma: no cover
     from figure_one_helpers import PANEL_COLORS, apply_mpl_defaults, resolve_enhanced_ref_data_path
+    from figure_two_llm import MEAN_LINE_STYLE, MEAN_LINE_WIDTH, NON_VIOLIN_ALPHA
     from pipeline_config import load_config_and_paths
     from pipeline_io import atomic_write_csv, read_table
 
@@ -255,10 +257,12 @@ def _plot_single_topic_panel_bar(
         hue="panel",
         hue_order=list(PANEL_ORDER),
         edgecolor="k",
-        width=0.58,
+        width=0.72,
         palette=[PANEL_COLORS.get(p, "#999999") for p in PANEL_ORDER],
         ax=ax,
     )
+    for patch in ax.patches:
+        patch.set_alpha(NON_VIOLIN_ALPHA)
 
     ax.set_title(title, loc=title_loc, fontweight="bold", fontsize=29)
     ax.set_ylabel("")
@@ -276,11 +280,25 @@ def _plot_single_topic_panel_bar(
     for label, mean_val in topic_means.items():
         y = y_positions.get(str(label))
         if y is not None and pd.notna(mean_val):
-            ax.plot([mean_val, mean_val], [y - 0.5, y + 0.5], linestyle="-", color="k", linewidth=1.7, clip_on=False)
+            ax.plot(
+                [mean_val, mean_val],
+                [y - 0.5, y + 0.5],
+                linestyle=MEAN_LINE_STYLE,
+                color="k",
+                linewidth=MEAN_LINE_WIDTH,
+                clip_on=False,
+            )
 
     if show_legend:
         handles, labels = ax.get_legend_handles_labels()
-        mean_handle = Line2D([0], [0], color="k", linestyle="-", linewidth=1.7, label="Mean")
+        mean_handle = Line2D(
+            [0],
+            [0],
+            color="k",
+            linestyle=MEAN_LINE_STYLE,
+            linewidth=MEAN_LINE_WIDTH,
+            label="Mean",
+        )
         handles = list(handles) + [mean_handle]
         legend_labels = [PANEL_DISPLAY_LABELS.get(lbl, lbl) for lbl in labels] + ["Mean"]
         ax.legend(

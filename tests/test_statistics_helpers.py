@@ -5,7 +5,7 @@ import unittest
 
 import pandas as pd
 
-from src.statistics_helpers import _physics_vs_chemistry_table
+from src.statistics_helpers import _panel_table, _physics_vs_chemistry_table, _uoa_table
 
 
 TOPIC_COLS = [
@@ -152,6 +152,129 @@ class PhysicsVsChemistryTableTest(unittest.TestCase):
             self.assertIn("Domain predicted $\\Delta$ Women (OLS)", tex)
             self.assertIn("Domain predicted $\\Delta$ log-odds (GLM)", tex)
             self.assertIn("+0.40", tex)
+
+
+class ScaleMetricAggregationTest(unittest.TestCase):
+    def test_panel_and_uoa_tables_count_institution_uoa_scale_metrics_once(self):
+        df_ics = pd.DataFrame(
+            [
+                {
+                    "inst_id": "1001",
+                    "Institution name": "Example University",
+                    "Unit of assessment number": 8,
+                    "Unit of assessment name": "Chemistry",
+                    "Panel": "B",
+                    "fte": 10.0,
+                    "num_doc_degrees_total": 100.0,
+                    "tot_income": 1_000.0,
+                    "tot_inc_kind": 100.0,
+                    "number_female": 1,
+                    "number_male": 1,
+                },
+                {
+                    "inst_id": "1001",
+                    "Institution name": "Example University",
+                    "Unit of assessment number": 8,
+                    "Unit of assessment name": "Chemistry",
+                    "Panel": "B",
+                    "fte": 10.0,
+                    "num_doc_degrees_total": 100.0,
+                    "tot_income": 1_000.0,
+                    "tot_inc_kind": 100.0,
+                    "number_female": 2,
+                    "number_male": 0,
+                },
+                {
+                    "inst_id": "1002",
+                    "Institution name": "Other University",
+                    "Unit of assessment number": 8,
+                    "Unit of assessment name": "Chemistry",
+                    "Panel": "B",
+                    "fte": 5.0,
+                    "num_doc_degrees_total": 50.0,
+                    "tot_income": 500.0,
+                    "tot_inc_kind": 50.0,
+                    "number_female": 0,
+                    "number_male": 1,
+                },
+            ]
+        )
+        df_output = pd.DataFrame(
+            [
+                {
+                    "Unit of assessment number": 8,
+                    "Panel": "B",
+                    "number_female": 1,
+                    "number_male": 1,
+                }
+            ]
+        )
+
+        panel_b = _panel_table(df_ics, df_output).set_index("Panel").loc["B"]
+        self.assertEqual(panel_b["FTE"], 15.0)
+        self.assertEqual(panel_b["PhDs"], 150.0)
+        self.assertEqual(panel_b["Total inc"], 1_650.0)
+        self.assertEqual(panel_b["Number of ICS"], 3)
+        self.assertEqual(panel_b["% Female Authors (ICS)"], 60.0)
+
+        uoa_8 = _uoa_table(df_ics, df_output)
+        uoa_8 = uoa_8[uoa_8["Unit of Assessment"].str.startswith("8 - ")].iloc[0]
+        self.assertEqual(uoa_8["FTE"], 15.0)
+        self.assertEqual(uoa_8["PhDs"], 150.0)
+        self.assertEqual(uoa_8["Total inc"], 1_650.0)
+        self.assertEqual(uoa_8["Number of ICS"], 3)
+
+    def test_explicit_scale_frame_can_include_submission_rows_without_case_rows(self):
+        df_ics = pd.DataFrame(
+            [
+                {
+                    "inst_id": "1001",
+                    "Institution name": "Example University",
+                    "Unit of assessment number": 8,
+                    "Panel": "B",
+                    "number_female": 1,
+                    "number_male": 1,
+                }
+            ]
+        )
+        df_output = pd.DataFrame(
+            [
+                {
+                    "Unit of assessment number": 8,
+                    "Panel": "B",
+                    "number_female": 1,
+                    "number_male": 1,
+                }
+            ]
+        )
+        scale_df = pd.DataFrame(
+            [
+                {
+                    "inst_id": "1001",
+                    "Unit of assessment number": 8,
+                    "Panel": "B",
+                    "fte": 10.0,
+                    "num_doc_degrees_total": 100.0,
+                    "tot_income": 1_000.0,
+                    "tot_inc_kind": 100.0,
+                },
+                {
+                    "inst_id": "1002",
+                    "Unit of assessment number": 8,
+                    "Panel": "B",
+                    "fte": 5.0,
+                    "num_doc_degrees_total": 50.0,
+                    "tot_income": 500.0,
+                    "tot_inc_kind": 50.0,
+                },
+            ]
+        )
+
+        panel_b = _panel_table(df_ics, df_output, scale_df=scale_df).set_index("Panel").loc["B"]
+        self.assertEqual(panel_b["FTE"], 15.0)
+        self.assertEqual(panel_b["PhDs"], 150.0)
+        self.assertEqual(panel_b["Total inc"], 1_650.0)
+        self.assertEqual(panel_b["Number of ICS"], 1)
 
 
 if __name__ == "__main__":

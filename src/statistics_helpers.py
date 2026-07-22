@@ -44,6 +44,31 @@ def load_statistics_data(data_root: Path = DEFAULT_DATA_ROOT):
     return df_output, df_ics, df_uoa_m, df_uni_m, df_uniuoa_m
 
 
+def load_department_scale_data(data_root: Path = DEFAULT_DATA_ROOT) -> pd.DataFrame:
+    """Load one-row-per-institution-UoA REF scale metrics."""
+    data_root = Path(data_root)
+    scale_path = data_root / "working" / "clean_ref_dep_data.xlsx"
+    if not scale_path.exists():
+        scale_path = data_root.parent / "working" / "clean_ref_dep_data.xlsx"
+    if not scale_path.exists():
+        raise FileNotFoundError(f"Missing department scale data: {scale_path}")
+
+    df = pd.read_excel(scale_path, engine="openpyxl")
+    if "uoa_id" in df.columns and "Unit of assessment number" not in df.columns:
+        df = df.rename(columns={"uoa_id": "Unit of assessment number"})
+    df["Unit of assessment number"] = (
+        df["Unit of assessment number"]
+        .astype(str)
+        .str.extract(r"(\d+)", expand=False)
+        .pipe(pd.to_numeric, errors="coerce")
+    )
+    df = df[df["Unit of assessment number"].notna()].copy()
+    df["Unit of assessment number"] = df["Unit of assessment number"].astype(int)
+    df["Panel"] = df["Unit of assessment number"].apply(uoa_to_panel)
+    df["Unit of assessment name"] = df["Unit of assessment number"].map(UOA_MAP)
+    return df
+
+
 def _safe_pct(num: float, denom: float) -> float:
     return 100 * num / denom if denom else np.nan
 
@@ -53,6 +78,29 @@ def _total_income(df: pd.DataFrame) -> pd.Series:
     cash = df["tot_income"] if "tot_income" in df.columns else 0
     kind = df["tot_inc_kind"] if "tot_inc_kind" in df.columns else 0
     return pd.Series(cash).fillna(0) + pd.Series(kind).fillna(0)
+
+
+def _institution_uoa_scale_rows(df_ics: pd.DataFrame) -> pd.DataFrame:
+    """Return one scale-metric row per institution-UoA submission."""
+    key_cols = [col for col in ("inst_id", "Unit of assessment number") if col in df_ics.columns]
+    if len(key_cols) < 2:
+        key_cols = [col for col in ("Institution name", "Unit of assessment number") if col in df_ics.columns]
+    if len(key_cols) < 2:
+        key_cols = [col for col in ("Institution name", "Unit of assessment name") if col in df_ics.columns]
+    if len(key_cols) < 2:
+        raise ValueError("Cannot deduplicate scale metrics without institution and UoA columns.")
+
+    scale_cols = [col for col in ("fte", "num_doc_degrees_total", "tot_income", "tot_inc_kind") if col in df_ics.columns]
+    cols = key_cols + [col for col in ("Panel", "Unit of assessment name") if col in df_ics.columns and col not in key_cols] + scale_cols
+    return df_ics[cols].drop_duplicates(subset=key_cols)
+
+
+def _scale_totals(df: pd.DataFrame) -> tuple[float, float, float]:
+    """Sum institution-UoA scale metrics from already deduplicated rows."""
+    fte = df["fte"].sum(min_count=1) if "fte" in df.columns else np.nan
+    doc_deg = df["num_doc_degrees_total"].sum(min_count=1) if "num_doc_degrees_total" in df.columns else np.nan
+    total_inc = _total_income(df).sum()
+    return fte, doc_deg, total_inc
 
 
 def _ensure_panel(df: pd.DataFrame) -> pd.DataFrame:
@@ -107,9 +155,14 @@ def _latex_escape_text(value: object) -> str:
     return text
 
 
-def _panel_table(df_ics: pd.DataFrame, df_output: pd.DataFrame) -> pd.DataFrame:
+def _panel_table(
+    df_ics: pd.DataFrame,
+    df_output: pd.DataFrame,
+    scale_df: Optional[pd.DataFrame] = None,
+) -> pd.DataFrame:
     df_ics = _ensure_panel(df_ics)
     df_output = _ensure_panel(df_output)
+    scale_rows = _ensure_panel(scale_df.copy()) if scale_df is not None else _institution_uoa_scale_rows(df_ics)
     panel_order = ["A", "B", "C", "D"]
     total_female_ics = df_ics["number_female"].sum()
     total_female_out = df_output["number_female"].sum()
@@ -131,9 +184,8 @@ def _panel_table(df_ics: pd.DataFrame, df_output: pd.DataFrame) -> pd.DataFrame:
         pct_fem_out = _safe_pct(fem_out, fem_out + male_out)
         pct_all_fem_out = _safe_pct(fem_out, total_female_out)
 
-        fte = ics_p["fte"].sum(min_count=1)
-        doc_deg = ics_p["num_doc_degrees_total"].sum(min_count=1)
-        total_inc = _total_income(ics_p).sum()
+        scale_p = scale_rows[scale_rows["Panel"] == panel]
+        fte, doc_deg, total_inc = _scale_totals(scale_p)
 
         rows.append(
             {
@@ -153,9 +205,14 @@ def _panel_table(df_ics: pd.DataFrame, df_output: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def _uoa_table(df_ics: pd.DataFrame, df_output: pd.DataFrame) -> pd.DataFrame:
+def _uoa_table(
+    df_ics: pd.DataFrame,
+    df_output: pd.DataFrame,
+    scale_df: Optional[pd.DataFrame] = None,
+) -> pd.DataFrame:
     df_ics = _ensure_panel(df_ics)
     df_output = _ensure_panel(df_output)
+    scale_rows = _ensure_panel(scale_df.copy()) if scale_df is not None else _institution_uoa_scale_rows(df_ics)
     total_female_ics = df_ics["number_female"].sum()
     total_female_out = df_output["number_female"].sum()
 
@@ -178,9 +235,8 @@ def _uoa_table(df_ics: pd.DataFrame, df_output: pd.DataFrame) -> pd.DataFrame:
         pct_fem_out = _safe_pct(fem_out, fem_out + male_out)
         pct_all_fem_out = _safe_pct(fem_out, total_female_out)
 
-        fte = ics_u["fte"].sum(min_count=1)
-        doc_deg = ics_u["num_doc_degrees_total"].sum(min_count=1)
-        total_inc = _total_income(ics_u).sum()
+        scale_u = scale_rows[scale_rows["Unit of assessment number"] == uoa]
+        fte, doc_deg, total_inc = _scale_totals(scale_u)
 
         rows.append(
             {
@@ -535,6 +591,7 @@ def build_and_save_summary_tables(
     df_ics: pd.DataFrame,
     df_output: pd.DataFrame,
     out_dir: Path = Path("../outputs/tables"),
+    scale_df: Optional[pd.DataFrame] = None,
 ) -> Dict[str, pd.DataFrame]:
     """
     Build summary tables (panels, UoA, LLM topics overall, LLM topics by panel)
@@ -542,7 +599,7 @@ def build_and_save_summary_tables(
     """
     out_dir = Path(out_dir)
 
-    panel_df = _panel_table(df_ics, df_output)
+    panel_df = _panel_table(df_ics, df_output, scale_df=scale_df)
     panel_df = panel_df[
         [
             "Panel",
@@ -590,7 +647,7 @@ def build_and_save_summary_tables(
     ]
     _table_to_latex(panel_df, out_dir / "panel_summary.tex", column_format="lrrrrrrrrr")
 
-    uoa_df = _uoa_table(df_ics, df_output)
+    uoa_df = _uoa_table(df_ics, df_output, scale_df=scale_df)
     uoa_numbers = pd.to_numeric(uoa_df["Unit of Assessment"].str.split(" - ").str[0], errors="coerce").astype(int)
     uoa_df.insert(0, "UoA", uoa_numbers)
     uoa_df["Unit of Assessment"] = uoa_df["Unit of Assessment"].str.split(" - ").str[1]

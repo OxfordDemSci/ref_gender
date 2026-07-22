@@ -656,7 +656,7 @@ def plot_word_association_figure(
             markerfacecolor=pos_color,
             markeredgecolor="k",
             markeredgewidth=0.35,
-            markersize=7,
+            markersize=5,
             label="Higher women's share",
         ),
         Line2D(
@@ -667,11 +667,21 @@ def plot_word_association_figure(
             markerfacecolor=neg_color,
             markeredgecolor="k",
             markeredgewidth=0.35,
-            markersize=7,
+            markersize=5,
             label="Lower women's share",
         ),
     ]
-    ax_a.legend(handles=legend_handles, frameon=True, edgecolor="k", fontsize=14, loc="lower right")
+    ax_a.legend(
+        handles=legend_handles,
+        frameon=True,
+        edgecolor="k",
+        fontsize=12,
+        loc="lower right",
+        borderpad=0.35,
+        handletextpad=0.45,
+        labelspacing=0.35,
+        borderaxespad=0.35,
+    )
 
     scatter_df = assoc.copy()
     q_for_color = scatter_df["q_value"].fillna(1.0).clip(lower=1e-12)
@@ -716,7 +726,8 @@ def plot_word_association_figure(
     cbar.ax.tick_params(labelsize=17)
 
     for ax in (ax_a, ax_b):
-        ax.grid(True, which="major", axis="both", linestyle="--", linewidth=0.8, alpha=0.35)
+        ax.grid(True, which="major", axis="x", linestyle="--", linewidth=0.6, alpha=0.25)
+        ax.grid(True, which="major", axis="y", linestyle="-", linewidth=0.35, alpha=0.12)
 
     fig.tight_layout(h_pad=3.0)
     return fig, (ax_a, ax_b)
